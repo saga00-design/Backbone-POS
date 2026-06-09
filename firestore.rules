@@ -1,0 +1,221 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isManager() {
+      return isAuthenticated() && 
+        (
+          request.auth.token.email == "saga00@gmail.com" ||
+          (exists(/databases/$(database)/documents/staffProfiles/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/staffProfiles/$(request.auth.uid)).data.role in ['manager', 'admin'])
+        );
+    }
+
+    function isStaff() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/staffProfiles/$(request.auth.uid));
+    }
+
+    function hasValidLocation(data) {
+      return data.locationId == "loc_camden" || data.siteId == "loc_camden";
+    }
+
+    // ===============================================================
+    // Staff Profiles
+    // ===============================================================
+    match /staffProfiles/{staffId} {
+      // Allow any authenticated user to read staff profiles to enable PIN login
+      allow read: if isAuthenticated();
+      // Allow managers to write any profile, or users to write their own
+      allow write: if isManager() || (isAuthenticated() && request.auth.uid == staffId);
+    }
+
+    // ===============================================================
+    // POS Orders
+    // ===============================================================
+    match /posOrders/{orderId} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.locationId == "loc_camden" && hasValidLocation(request.resource.data);
+      allow delete: if isManager();
+    }
+
+    // ===============================================================
+    // Menu Items & Categories
+    // ===============================================================
+    match /menuItems/{itemId} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow write: if isManager();
+    }
+    match /menuCategories/{categoryId} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow write: if isManager();
+    }
+
+    // ===============================================================
+    // Tables
+    // ===============================================================
+    match /tables/{tableId} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.locationId == "loc_camden" && hasValidLocation(request.resource.data);
+      allow delete: if isManager();
+    }
+
+    // ===============================================================
+    // Zones
+    // ===============================================================
+    match /zones/{zoneId} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.locationId == "loc_camden" && hasValidLocation(request.resource.data);
+      allow delete: if isManager();
+    }
+
+    // ===============================================================
+    // Modifier Groups
+    // ===============================================================
+    match /modifierGroups/{groupId} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow write: if isManager();
+    }
+
+    // ===============================================================
+    // Shift Briefings & Acknowledgements
+    // ===============================================================
+    match /shiftBriefings/{briefingId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+    match /briefingAcknowledgements/{ackId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update, delete: if isManager();
+    }
+
+    // ===============================================================
+    // POS Alerts
+    // ===============================================================
+    match /posAlerts/{alertId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+
+    // ===============================================================
+    // KDS Tickets
+    // ===============================================================
+    match /kdsTickets/{ticketId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /barKdsTickets/{ticketId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ===============================================================
+    // KDS History
+    // ===============================================================
+    match /kdsHistory/{historyId} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update, delete: if isManager();
+    }
+
+    // ===============================================================
+    // POS Payments
+    // ===============================================================
+    match /posPayments/{paymentId} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update, delete: if isManager();
+    }
+
+    // ===============================================================
+    // Z-Reports (End of Day)
+    // ===============================================================
+    match /zReports/{reportId} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow create: if isManager() && hasValidLocation(request.resource.data);
+      allow update, delete: if isManager();
+    }
+
+    // ===============================================================
+    // Cancelled Sessions & Stock
+    // ===============================================================
+    match /cancelledSessions/{id} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update, delete: if isManager();
+    }
+    match /quizSubmissions/{id} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update, delete: if isManager();
+    }
+    match /stockMovements/{id} {
+      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update, delete: if isManager();
+    }
+
+    // ===============================================================
+    // Transactions, Snapshots, and Histories (Auditing)
+    // ===============================================================
+    match /posTransactions/{id} {
+      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update: if isAuthenticated() && (resource == null || hasValidLocation(resource.data)) && hasValidLocation(request.resource.data);
+      allow delete: if false; // Transactions must never be deleted!
+    }
+    match /ticketSnapshots/{id} {
+      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update: if isManager();
+      allow delete: if false; // Snapshots must never be deleted!
+    }
+    match /transactionAdjustments/{id} {
+      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update, delete: if false; // Audit logs must be immutable!
+    }
+    match /receiptPrintHistory/{id} {
+      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update, delete: if false;
+    }
+    match /receiptEmailHistory/{id} {
+      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update, delete: if false;
+    }
+    match /dailyClosures/{id} {
+      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
+      allow create: if isManager() && hasValidLocation(request.resource.data);
+      allow update: if isManager();
+      allow delete: if false;
+    }
+
+    // ===============================================================
+    // Nested Business Site Audit Paths
+    // ===============================================================
+    match /businesses/{businessId}/sites/{siteId}/transactionAuditLogs/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (siteId == "loc_camden" || businessId == "biz_backbone");
+      allow update, delete: if false;
+    }
+    match /businesses/{businessId}/sites/{siteId}/receiptEmailHistory/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (siteId == "loc_camden" || businessId == "biz_backbone");
+      allow update, delete: if false;
+    }
+    match /businesses/{businessId}/sites/{siteId}/transactionAdjustments/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (siteId == "loc_camden" || businessId == "biz_backbone");
+      allow update, delete: if false;
+    }
+  }
+}

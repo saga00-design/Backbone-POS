@@ -1,0 +1,6 @@
+{
+  "name": "Backbone POS",
+  "description": "Enterprise-grade restaurant POS with multi-site management, real-time KDS, advanced audit trailing, and theoretical inventory tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,335 @@
+{
+  "entities": {
+    "StaffProfile": {
+      "title": "Staff Profile",
+      "description": "Information about staff members",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "pin": { "type": "string" },
+        "role": { "type": "string", "enum": ["waiter", "chef", "bartender", "supervisor", "manager", "admin"] },
+        "locationId": { "type": "string" }
+      },
+      "required": ["id", "name", "pin", "role", "locationId"]
+    },
+    "POSOrder": {
+      "title": "POS Order",
+      "description": "An order in the restaurant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tableId": { "type": "string" },
+        "status": { "type": "string" },
+        "locationId": { "type": "string" },
+        "items": { 
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "voidReason": { "type": "string" }
+            }
+          }
+        },
+        "totalGross": { "type": "number" },
+        "totalCost": { "type": "number" },
+        "amountPaid": { "type": "number" },
+        "serviceCharge": { "type": "number" },
+        "vatTotal": { "type": "number" },
+        "subtotalGross": { "type": "number" }
+      },
+      "required": ["id", "tableId", "status", "locationId"]
+    },
+    "Table": {
+      "title": "Table",
+      "description": "A table in the restaurant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "locationId": { "type": "string" },
+        "zoneId": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "name", "locationId", "zoneId", "status"]
+    },
+    "Zone": {
+      "title": "Zone",
+      "description": "A zone in the restaurant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "locationId": { "type": "string" }
+      },
+      "required": ["id", "name", "locationId"]
+    },
+    "MenuItem": {
+      "title": "Menu Item",
+      "description": "An item on the menu",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "priceGross": { "type": "number" },
+        "cost": { "type": "number" },
+        "locationId": { "type": "string" },
+        "station": { "type": "string" },
+        "isDrink": { "type": "boolean" },
+        "modifierGroups": { "type": "array" },
+        "ingredients": { "type": "array" },
+        "stockRequirements": { "type": "array" }
+      },
+      "required": ["id", "name", "categoryId", "priceGross", "locationId"]
+    },
+    "StockMovement": {
+      "title": "Stock Movement",
+      "description": "Theoretical stock deductions linked to sales",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string" },
+        "locationId": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "items": { "type": "array" }
+      },
+      "required": ["orderId", "locationId", "timestamp", "items"]
+    },
+    "ModifierGroup": {
+      "title": "Modifier Group",
+      "description": "Group of modifiers that can be applied to an item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "minSelection": { "type": "number" },
+        "maxSelection": { "type": "number" },
+        "modifiers": { "type": "array" }
+      },
+      "required": ["id", "name", "minSelection", "maxSelection", "modifiers"]
+    },
+    "Modifier": {
+      "title": "Modifier",
+      "description": "A single modifier option",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "priceDelta": { "type": "number" },
+        "cost": { "type": "number" },
+        "stockRequirements": { "type": "array" }
+      },
+      "required": ["id", "name", "priceDelta"]
+    },
+    "KDSHistory": {
+      "title": "KDS History",
+      "description": "Bumped tickets history",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string" },
+        "tableId": { "type": "string" },
+        "station": { "type": "string" },
+        "bumpedAt": { "type": "number" },
+        "items": { "type": "array" },
+        "locationId": { "type": "string" }
+      },
+      "required": ["orderId", "station", "bumpedAt", "locationId"]
+    },
+    "KDSTicket": {
+      "title": "KDS Ticket",
+      "description": "A ticket for a specific station (Kitchen/Bar)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderId": { "type": "string" },
+        "tableId": { "type": "string" },
+        "tableName": { "type": "string" },
+        "station": { "type": "string" },
+        "status": { "type": "string" },
+        "items": { "type": "array" },
+        "priority": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "startedAt": { "type": "number" },
+        "completedAt": { "type": "number" },
+        "bumpedAt": { "type": "number" },
+        "locationId": { "type": "string" }
+      },
+      "required": ["id", "orderId", "tableId", "station", "status", "items", "createdAt", "locationId"]
+    },
+    "POSPayment": {
+      "title": "POS Payment",
+      "description": "A payment transaction record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderId": { "type": "string" },
+        "locationId": { "type": "string" },
+        "tableId": { "type": "string" },
+        "tableName": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "amountPaid": { "type": "number" },
+        "currency": { "type": "string" },
+        "paidAt": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "orderId", "locationId", "paymentMethod", "amountPaid", "paidAt", "status"]
+    },
+    "ZReport": {
+      "title": "Z Report",
+      "description": "End of day financial summary",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "staffId": { "type": "string" },
+        "grossSales": { "type": "number" },
+        "netSales": { "type": "number" },
+        "locationId": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "staffId", "grossSales", "locationId"]
+    },
+    "CancelledSession": {
+      "title": "Cancelled Session",
+      "description": "Audit trail for cancelled empty sessions",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string" },
+        "tableId": { "type": "string" },
+        "staffId": { "type": "string" },
+        "cancelledAt": { "type": "number" },
+        "reason": { "type": "string" },
+        "originalItemCount": { "type": "number" },
+        "originalValue": { "type": "number" },
+        "locationId": { "type": "string" }
+      },
+      "required": ["orderId", "tableId", "staffId", "cancelledAt", "reason", "locationId"]
+    },
+    "QuizSubmission": {
+      "title": "Quiz Submission",
+      "description": "Record of a staff member completing a knowledge quiz",
+      "type": "object",
+      "properties": {
+        "staffId": { "type": "string" },
+        "dishName": { "type": "string" },
+        "score": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "completedAt": { "type": "number" },
+        "locationId": { "type": "string" },
+        "answers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "question": { "type": "string" },
+              "isCorrect": { "type": "boolean" },
+              "selectedOption": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["staffId", "dishName", "score", "totalQuestions", "completedAt", "locationId"]
+    },
+    "POSTransaction": {
+      "title": "POS Transaction",
+      "description": "An archived transaction record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ticketNumber": { "type": "string" },
+        "orderId": { "type": "string" },
+        "locationId": { "type": "string" },
+        "tableId": { "type": "string" },
+        "tableName": { "type": "string" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "covers": { "type": "number" },
+        "status": { "type": "string" },
+        "totalGross": { "type": "number" }
+      },
+      "required": ["id", "ticketNumber", "orderId", "locationId", "status", "totalGross"]
+    }
+  },
+  "firestore": {
+    "/staffProfiles/{staffId}": {
+      "schema": { "$ref": "StaffProfile" },
+      "description": "Staff profiles collection"
+    },
+    "/posOrders/{orderId}": {
+      "schema": { "$ref": "POSOrder" },
+      "description": "POS orders collection"
+    },
+    "/tables/{tableId}": {
+      "schema": { "$ref": "Table" },
+      "description": "Tables collection"
+    },
+    "/zones/{zoneId}": {
+      "schema": { "$ref": "Zone" },
+      "description": "Zones collection"
+    },
+    "/menuItems/{itemId}": {
+      "schema": { "$ref": "MenuItem" },
+      "description": "Menu items collection"
+    },
+    "/kdsHistory/{historyId}": {
+      "schema": { "$ref": "KDSHistory" },
+      "description": "KDS history collection"
+    },
+    "/posPayments/{paymentId}": {
+      "schema": { "$ref": "POSPayment" },
+      "description": "Payment ledger collection"
+    },
+    "/zReports/{reportId}": {
+      "schema": { "$ref": "ZReport" },
+      "description": "Z reports collection"
+    },
+    "/stockMovements/{movementId}": {
+      "schema": { "$ref": "StockMovement" },
+      "description": "Stock deduction logs"
+    },
+    "/modifierGroups/{groupId}": {
+      "schema": { "$ref": "ModifierGroup" },
+      "description": "Global modifier groups synced from hub"
+    },
+    "/kdsTickets/{ticketId}": {
+      "schema": { "$ref": "KDSTicket" },
+      "description": "Kitchen KDS tickets"
+    },
+    "/barKdsTickets/{ticketId}": {
+      "schema": { "$ref": "KDSTicket" },
+      "description": "Bar KDS tickets"
+    },
+    "/cancelledSessions/{id}": {
+      "schema": { "$ref": "CancelledSession" },
+      "description": "Cancelled empty sessions audit log"
+    },
+    "/quizSubmissions/{id}": {
+      "schema": { "$ref": "QuizSubmission" },
+      "description": "Staff knowledge quiz results"
+    },
+    "/posTransactions/{id}": {
+      "schema": { "$ref": "POSTransaction" },
+      "description": "Paid transactions"
+    },
+    "/ticketSnapshots/{id}": {
+      "schema": { "type": "object" },
+      "description": "Frozen order and receipt snapshots"
+    },
+    "/transactionAdjustments/{id}": {
+      "schema": { "type": "object" },
+      "description": "Audit log for voids, payment corrections, and adjustments"
+    },
+    "/receiptPrintHistory/{id}": {
+      "schema": { "type": "object" },
+      "description": "History of prints and reprinted copies"
+    },
+    "/receiptEmailHistory/{id}": {
+      "schema": { "type": "object" },
+      "description": "History of emails sent to customers"
+    },
+    "/dailyClosures/{id}": {
+      "schema": { "type": "object" },
+      "description": "End of day closed shift reports"
+    }
+  }
+}
