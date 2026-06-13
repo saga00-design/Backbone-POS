@@ -1171,7 +1171,16 @@ export const usePOSStore = create<POSState>((set, get) => ({
             },
             createdAt: order.createdAt,
             paidAt: Date.now(),
-            businessDate: new Date().toISOString().split('T')[0],
+            businessDate: (() => {
+  const now = new Date();
+  const londonHour = parseInt(
+    now.toLocaleString('en-GB', { timeZone: 'Europe/London', hour: 'numeric', hour12: false })
+  );
+  const businessDay = londonHour < 6
+    ? new Date(now.getTime() - 86400000)
+    : now;
+  return businessDay.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+})(),
             isLocked: false,
             snapshotId
           };

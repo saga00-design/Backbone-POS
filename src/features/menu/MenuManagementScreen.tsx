@@ -627,6 +627,15 @@ export const MenuManagementScreen: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [editingItem, setEditingItem] = useState<Partial<MenuItemSnapshot> | null>(null);
   const [editingGroup, setEditingGroup] = useState<Partial<ModifierGroup> | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string; name: string; type: 'item' | 'group' } | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(current => current === msg ? null : current);
+    }, 3000);
+  };
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -689,21 +698,30 @@ export const MenuManagementScreen: React.FC = () => {
     }
   };
 
-  const handleDeleteItem = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this item?')) return;
-    try {
-      await deleteDoc(doc(db, 'menuItems', id));
-    } catch (error) {
-      console.error('Error deleting item:', error);
-    }
+  const handleDeleteItem = (id: string, name: string) => {
+    setDeleteConfirmation({ id, name, type: 'item' });
   };
 
-  const handleDeleteGroup = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this modifier group?')) return;
+  const handleDeleteGroup = (id: string, name: string) => {
+    setDeleteConfirmation({ id, name, type: 'group' });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmation) return;
+    const { id, type } = deleteConfirmation;
     try {
-      await deleteDoc(doc(db, 'modifierGroups', id));
+      if (type === 'item') {
+        await deleteDoc(doc(db, 'menuItems', id));
+        showToast('Item deleted successfully');
+      } else {
+        await deleteDoc(doc(db, 'modifierGroups', id));
+        showToast('Modifier group deleted successfully');
+      }
     } catch (error) {
-      console.error('Error deleting group:', error);
+      console.error(`Error deleting ${type}:`, error);
+      showToast(`Failed to delete ${type}`);
+    } finally {
+      setDeleteConfirmation(null);
     }
   };
 
@@ -862,8 +880,8 @@ export const MenuManagementScreen: React.FC = () => {
                     </div>
                   </div>
                   
-                  <div className="mt-8 flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => handleDeleteGroup(group.id)} className="p-3 text-text-muted hover:text-status-pending hover:bg-status-pending/10 rounded-xl transition-all">
+                  <div className="mt-8 flex items-center justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => handleDeleteGroup(group.id, group.name || '')} className="p-3 text-text-muted hover:text-status-pending hover:bg-status-pending/10 rounded-xl transition-all">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -879,7 +897,7 @@ export const MenuManagementScreen: React.FC = () => {
                       <h3 className="text-white font-bold text-xs line-clamp-2 uppercase tracking-wide">{item.name}</h3>
                       <button 
                         onClick={() => setEditingItem(item)}
-                        className="p-2 text-text-muted hover:text-brand-primary bg-white/5 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                        className="p-2 text-text-muted hover:text-brand-primary bg-white/5 rounded-xl transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100"
                       >
                         <Settings2 className="w-3.5 h-3.5" />
                       </button>
@@ -893,9 +911,9 @@ export const MenuManagementScreen: React.FC = () => {
                     </div>
                   </div>
                   
-                  <div className="mt-4 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="mt-4 flex items-center justify-end gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                     <button onClick={() => handleCopyItem(item)} className="p-2 text-text-secondary hover:text-white hover:bg-white/5 rounded-xl"><Copy className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => handleDeleteItem(item.id)} className="p-2 text-text-muted hover:text-status-pending hover:bg-status-pending/10 rounded-xl"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => handleDeleteItem(item.id, item.name)} className="p-2 text-text-muted hover:text-status-pending hover:bg-status-pending/10 rounded-xl"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 </div>
               ))}
@@ -919,6 +937,50 @@ export const MenuManagementScreen: React.FC = () => {
           onClose={() => setEditingGroup(null)}
           onSave={handleSaveGroup}
         />
+      )}
+
+      {deleteConfirmation && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[999] animate-in fade-in duration-200">
+          <div className="bg-[#1c2132] border border-white/5 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 text-status-pending mb-4">
+              <div className="w-10 h-10 rounded-full bg-status-pending/10 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5 text-status-pending" />
+              </div>
+              <div>
+                <h3 className="text-white font-black text-sm uppercase tracking-wide">Confirm Deletion</h3>
+                <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">This action cannot be undone</p>
+              </div>
+            </div>
+            
+            <p className="text-xs text-text-secondary mb-6 leading-relaxed">
+              Are you sure you want to delete <span className="text-white font-bold uppercase">"{deleteConfirmation.name}"</span>?
+            </p>
+            
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setDeleteConfirmation(null)}
+                className="flex-1 py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-text-secondary text-xs font-bold uppercase tracking-wider transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 py-3 px-4 rounded-xl bg-status-pending hover:bg-status-pending/80 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-lg shadow-status-pending/20"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 bg-[#1a1f2e] border border-brand-primary/25 shadow-2xl shadow-brand-primary/10 rounded-2xl px-4 py-3 flex items-center gap-2.5 z-[999] animate-in slide-in-from-bottom-4 duration-300">
+          <div className="w-6 h-6 rounded-full bg-brand-primary/10 flex items-center justify-center shrink-0">
+            <Check className="w-3.5 h-3.5 text-brand-primary" />
+          </div>
+          <span className="text-[10px] font-black text-white uppercase tracking-wider">{toastMessage}</span>
+        </div>
       )}
     </div>
   );

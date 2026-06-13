@@ -1096,7 +1096,7 @@ export const ReportingScreen: React.FC = () => {
                           className="text-white hover:text-brand-primary active:scale-95 transition-all cursor-pointer font-black hover:underline decoration-brand-primary underline-offset-2 text-left"
                           title="View transaction receipt"
                         >
-                          {order.id.slice(0, 8)}
+                          {order.id}
                         </button>
                       </td>
                       <td className="px-8 py-4 text-[10px] font-black text-brand-primary uppercase">{PricingEngine.formatCurrency(gross)}</td>
