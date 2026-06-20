@@ -1,13 +1,17 @@
 import React, { useMemo, useState } from 'react';
+import { doc, getDocFromServer } from 'firebase/firestore';
 import { POSOrder, PaymentMethod } from '../../types/pos';
-import { X, CreditCard, Banknote, Ticket, Check, Calculator, Delete, CornerDownLeft } from 'lucide-react';
+import { X, CreditCard, Banknote, Ticket, Check, Calculator, Delete, CornerDownLeft, AlertTriangle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { PricingEngine } from '../../domain/PricingEngine';
+import { db } from '../../lib/firebase';
+import { useConnectionStatus } from '../../hooks/useConnectionStatus';
+import { OfflineBanner } from '../OfflineBanner';
 
 interface PaymentModalProps {
   order: POSOrder | null;
   onClose: () => void;
-  onProcess: (amount: number, method: PaymentMethod) => void;
+  onProcess: (amount: number, method: PaymentMethod) => Promise<void> | void;
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({ order, onClose, onProcess }) => {
@@ -87,6 +91,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ order, onClose, onPr
   const [method, setMethod] = useState<PaymentMethod>('card');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDone, setIsDone] = useState(false);
+  const [paymentWarning, setPaymentWarning] = useState<string | null>(null);
+
+  const { isOnline } = useConnectionStatus();
 
   // Math Calculator Popup State & Helpers
   const [showCalculator, setShowCalculator] = useState(false);
@@ -155,19 +162,58 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ order, onClose, onPr
     }
   };
 
-  const handleProcess = () => {
+  const handleProcess = async () => {
     const parsed = parseFloat(amount || '0');
-
     if (!parsed || parsed <= 0) return;
 
-    setIsProcessing(true);
+    // UI-layer offline guard — belt and suspenders alongside the store guard.
+    if (!isOnline) return;
 
-    setTimeout(() => {
-      onProcess(Math.round(parsed * 100), method);
+    setIsProcessing(true);
+    setPaymentWarning(null);
+
+    try {
+      await (onProcess(Math.round(parsed * 100), method) as Promise<void>);
+    } catch {
       setIsProcessing(false);
-      setIsDone(true);
-      setTimeout(onClose, 1500);
-    }, 1000);
+      setPaymentWarning(
+        'Payment write failed. Do not retry without confirming with a manager whether the payment was recorded.'
+      );
+      return;
+    }
+
+    // Verify the posPayments + posOrders write actually landed on the server.
+    // Retries up to 3 times with increasing delays before raising the manager alert.
+    const expectedAmountPaid = (order.amountPaid || 0) + Math.round(parsed * 100);
+    let verified = false;
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        if (attempt > 1) await new Promise<void>(r => setTimeout(r, attempt * 700));
+        const snap = await getDocFromServer(doc(db, 'posOrders', order.id));
+        if (snap.exists() && (snap.data()?.amountPaid ?? 0) >= expectedAmountPaid) {
+          verified = true;
+          break;
+        }
+      } catch {
+        // Network failure on the verification probe — keep retrying.
+      }
+    }
+
+    setIsProcessing(false);
+
+    if (!verified) {
+      const formattedAmount = PricingEngine.formatCurrency(Math.round(parsed * 100));
+      setPaymentWarning(
+        `ALERT MANAGER: Payment for ${formattedAmount} could not be confirmed on the server after 3 attempts. ` +
+        `Note the table (${order.tableId}) and amount and do NOT re-process without manager approval — ` +
+        `the payment may have gone through.`
+      );
+      return;
+    }
+
+    setIsDone(true);
+    setTimeout(onClose, 1500);
   };
 
   const methods: { id: PaymentMethod; label: string; icon: any }[] = [
@@ -245,6 +291,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ order, onClose, onPr
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 no-scrollbar">
+          <OfflineBanner position="inline" />
+
           <div className="bg-white/5 rounded-2xl md:rounded-3xl p-4 md:p-6 space-y-2 md:space-y-3 border border-white/5">
             <div className="flex justify-between text-[8px] md:text-[10px] font-black uppercase tracking-widest text-text-secondary">
               <span>Subtotal</span>
@@ -342,13 +390,26 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ order, onClose, onPr
           </div>
         </div>
 
-        <div className="p-4 md:p-8 border-t border-white/5 shrink-0">
+        <div className="p-4 md:p-8 border-t border-white/5 shrink-0 space-y-3">
+          {!isOnline && (
+            <div className="flex items-center gap-2 text-red-400 text-xs font-black uppercase tracking-widest justify-center">
+              Payment disabled while offline
+            </div>
+          )}
+
+          {paymentWarning && (
+            <div className="bg-amber-500/10 border border-amber-500/40 rounded-2xl p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-amber-200 text-xs font-bold leading-relaxed">{paymentWarning}</p>
+            </div>
+          )}
+
           <button
-            disabled={isProcessing || !amount || parseFloat(amount) <= 0}
+            disabled={isProcessing || !amount || parseFloat(amount) <= 0 || !isOnline}
             onClick={handleProcess}
             className={cn(
               'w-full py-4 md:py-6 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-xs md:text-sm transition-all shadow-xl flex items-center justify-center gap-3',
-              !isProcessing && amount && parseFloat(amount) > 0
+              !isProcessing && amount && parseFloat(amount) > 0 && isOnline
                 ? 'bg-brand-primary text-white shadow-brand-primary/20 hover:scale-[1.02] active:scale-[0.98]'
                 : 'bg-white/5 text-white/20 cursor-not-allowed'
             )}

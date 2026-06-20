@@ -959,6 +959,14 @@ export const usePOSStore = create<POSState>((set, get) => ({
   },
 
   processPayment: async (amount, method) => {
+    // Hard guard: reject at the store layer even if the UI block is somehow bypassed.
+    if (!navigator.onLine) {
+      throw new Error(
+        'Device is offline. Payment aborted — no Firestore writes attempted. ' +
+        'Reconnect and try again.'
+      );
+    }
+
     const state = get();
     const order = state.activeOrder;
     const staff = state.currentStaff;

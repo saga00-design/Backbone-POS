@@ -11,6 +11,7 @@ import { ReportingScreen } from './features/reporting/ReportingScreen';
 import { PerformanceScreen } from './features/performance/PerformanceScreen';
 import { SettingsScreen } from './features/settings/SettingsScreen';
 import { BriefingOverlay } from './components/auth/BriefingOverlay';
+import { OfflineBanner } from './components/OfflineBanner';
 import { useFirestoreSync } from './lib/useFirestoreSync';
 import { useConnectivity } from './lib/useConnectivity';
 import { usePacingMonitor } from './lib/usePacingMonitor';
@@ -82,6 +83,7 @@ export default function App() {
 
   return (
     <div className="h-screen bg-bg-dark flex flex-col md:flex-row overflow-hidden">
+      <OfflineBanner position="top" />
       <BriefingOverlay />
       <NotificationCenter />
       {/* Mobile Header */}
