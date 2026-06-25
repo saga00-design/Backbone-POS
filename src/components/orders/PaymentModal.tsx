@@ -195,8 +195,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ order, onClose, onPr
           verified = true;
           break;
         }
-      } catch {
-        // Network failure on the verification probe — keep retrying.
+      } catch (err) {
+        console.error('[PaymentConfirmation] poll error:', err);
+        // continue polling
       }
     }
 

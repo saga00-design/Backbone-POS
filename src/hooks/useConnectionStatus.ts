@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { doc, getDocFromServer } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
@@ -37,65 +37,91 @@ export interface ConnectionStatus {
   offlineDuration: string | null;
 }
 
+// ---- Singleton store — initialized once per module ----
+// All callers share one Firestore poller and one set of browser event listeners,
+// so OfflineBanner + PaymentModal both calling this hook produces a single 8-second probe.
+
+type Listener = () => void;
+const _listeners = new Set<Listener>();
+
+let _isOnline = navigator.onLine;
+let _lastOnlineAt: Date | null = navigator.onLine ? new Date() : null;
+let _offlineSince: Date | null = navigator.onLine ? null : new Date();
+let _now = Date.now();
+let _tickTimer: ReturnType<typeof setInterval> | null = null;
+let _snapshot: ConnectionStatus = {
+  isOnline: _isOnline,
+  lastOnlineAt: _lastOnlineAt,
+  offlineDuration: _offlineSince ? formatDuration(_now - _offlineSince.getTime()) : null,
+};
+
+function notify(): void {
+  _snapshot = {
+    isOnline: _isOnline,
+    lastOnlineAt: _lastOnlineAt,
+    offlineDuration: _offlineSince ? formatDuration(_now - _offlineSince.getTime()) : null,
+  };
+  _listeners.forEach(l => l());
+}
+
+// Keep the per-second tick alive only while offline so we aren't burning CPU online.
+function syncTickTimer(): void {
+  if (_offlineSince && !_tickTimer) {
+    _tickTimer = setInterval(() => {
+      _now = Date.now();
+      notify();
+    }, 1000);
+  } else if (!_offlineSince && _tickTimer) {
+    clearInterval(_tickTimer);
+    _tickTimer = null;
+  }
+}
+
+function markOffline(): void {
+  _isOnline = false;
+  if (!_offlineSince) _offlineSince = new Date();
+  notify();
+  syncTickTimer();
+}
+
+function markOnline(): void {
+  _isOnline = true;
+  _lastOnlineAt = new Date();
+  _offlineSince = null;
+  notify();
+  syncTickTimer();
+}
+
+async function runProbe(): Promise<void> {
+  // Skip heartbeats when not authenticated — probing would always fail anyway.
+  if (!auth.currentUser) return;
+  const alive = await probeServer();
+  if (alive) markOnline();
+  else markOffline();
+}
+
+// Browser events — trust 'offline' immediately; verify 'online' with a real probe.
+window.addEventListener('offline', () => markOffline());
+window.addEventListener('online', () => void runProbe());
+
+// Probe on module load and every 8 seconds thereafter.
+void runProbe();
+setInterval(() => void runProbe(), HEARTBEAT_INTERVAL_MS);
+
+// Arm the tick timer if we started offline.
+syncTickTimer();
+
+// ---- Hook ----
+
+function subscribe(listener: Listener): () => void {
+  _listeners.add(listener);
+  return () => { _listeners.delete(listener); };
+}
+
+function getSnapshot(): ConnectionStatus {
+  return _snapshot;
+}
+
 export function useConnectionStatus(): ConnectionStatus {
-  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
-  const [lastOnlineAt, setLastOnlineAt] = useState<Date | null>(
-    navigator.onLine ? new Date() : null
-  );
-  const [offlineSince, setOfflineSince] = useState<Date | null>(
-    navigator.onLine ? null : new Date()
-  );
-  // Drives the ticking offlineDuration string without an extra state.
-  const [now, setNow] = useState(Date.now());
-
-  // Tick every second while offline so offlineDuration stays fresh.
-  useEffect(() => {
-    if (!offlineSince) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [offlineSince]);
-
-  const markOffline = useCallback(() => {
-    setIsOnline(false);
-    setOfflineSince(prev => prev ?? new Date());
-  }, []);
-
-  const markOnline = useCallback(() => {
-    setIsOnline(true);
-    setLastOnlineAt(new Date());
-    setOfflineSince(null);
-  }, []);
-
-  const runProbe = useCallback(async () => {
-    // Skip heartbeats when not authenticated — probing would always fail anyway.
-    if (!auth.currentUser) return;
-    const alive = await probeServer();
-    if (alive) markOnline();
-    else markOffline();
-  }, [markOffline, markOnline]);
-
-  // Browser events — trust 'offline' immediately; verify 'online' with a real probe.
-  useEffect(() => {
-    const onOffline = () => markOffline();
-    const onOnline = () => runProbe();
-    window.addEventListener('offline', onOffline);
-    window.addEventListener('online', onOnline);
-    return () => {
-      window.removeEventListener('offline', onOffline);
-      window.removeEventListener('online', onOnline);
-    };
-  }, [markOffline, runProbe]);
-
-  // Heartbeat: probe on mount and every 8 seconds thereafter.
-  const runProbeRef = useRef(runProbe);
-  runProbeRef.current = runProbe;
-  useEffect(() => {
-    runProbeRef.current();
-    const interval = setInterval(() => runProbeRef.current(), HEARTBEAT_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, []);
-
-  const offlineDuration = offlineSince ? formatDuration(now - offlineSince.getTime()) : null;
-
-  return { isOnline, lastOnlineAt, offlineDuration };
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
