@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDocFromServer } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
@@ -104,8 +105,11 @@ async function runProbe(): Promise<void> {
 window.addEventListener('offline', () => markOffline());
 window.addEventListener('online', () => void runProbe());
 
-// Probe on module load and every 8 seconds thereafter.
-void runProbe();
+// First probe fires when auth resolves — auth.currentUser is null on module load
+// so an immediate runProbe() would be skipped. Also re-probes on subsequent sign-ins.
+onAuthStateChanged(auth, user => {
+  if (user) void runProbe();
+});
 setInterval(() => void runProbe(), HEARTBEAT_INTERVAL_MS);
 
 // Arm the tick timer if we started offline.
