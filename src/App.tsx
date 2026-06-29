@@ -90,7 +90,7 @@ export default function App() {
       <div className="md:hidden h-16 bg-bg-card border-b border-white/5 flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center border border-white/10 overflow-hidden">
-            <img src="/Backbonehub-ico.png" alt="Backbone" className="w-full h-full object-contain p-1.5" referrerPolicy="no-referrer" />
+            <img src="/Backbone-POS-icon.png" alt="Backbone" className="w-full h-full object-contain p-1.5" referrerPolicy="no-referrer" />
           </div>
           <span className="text-white font-black uppercase tracking-tighter text-sm">Backbone</span>
         </div>
@@ -115,7 +115,7 @@ export default function App() {
           onClick={e => e.stopPropagation()}
         >
           <div className="hidden md:flex w-14 h-14 bg-white/5 rounded-2xl items-center justify-center border border-white/10 overflow-hidden mb-6 p-2 transition-all hover:bg-white/10">
-            <img src="/Backbonehub-ico.png" alt="Backbone" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+            <img src="/Backbone-POS-icon.png" alt="Backbone" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
           </div>
           
           <nav className="flex-1 flex flex-col gap-4 w-full px-4 md:px-0">

@@ -212,7 +212,7 @@ export const PinLoginScreen: React.FC = () => {
 
       <div className="mb-12 text-center">
         <div className="w-20 h-20 bg-white/5 rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-2xl shadow-white/5 overflow-hidden p-3 border border-white/10">
-          <img src="/Backbonehub-ico.png" alt="Backbone" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+          <img src="/Backbone-POS-icon.png" alt="Backbone" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
         </div>
         <h1 className="text-2xl font-black tracking-tight text-white mb-2">Backbone POS</h1>
         <p className="text-text-secondary font-medium uppercase tracking-widest text-[10px]">Enter Staff PIN to Start</p>
