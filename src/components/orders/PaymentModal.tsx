@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { doc, getDocFromServer } from 'firebase/firestore';
 import { POSOrder, PaymentMethod } from '../../types/pos';
 import { X, CreditCard, Banknote, Ticket, Check, Calculator, Delete, CornerDownLeft, AlertTriangle } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { PricingEngine } from '../../domain/PricingEngine';
 import { db } from '../../lib/firebase';
@@ -174,7 +175,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ order, onClose, onPr
 
     try {
       await (onProcess(Math.round(parsed * 100), method) as Promise<void>);
-    } catch {
+    } catch (err) {
+      console.error('[PaymentModal] onProcess failed:', err);
       setIsProcessing(false);
       setPaymentWarning(
         'Payment write failed. Do not retry without confirming with a manager whether the payment was recorded.'
@@ -217,7 +219,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ order, onClose, onPr
     setTimeout(onClose, 1500);
   };
 
-  const methods: { id: PaymentMethod; label: string; icon: any }[] = [
+  const methods: { id: PaymentMethod; label: string; icon: LucideIcon }[] = [
     { id: 'card', label: 'Credit Card', icon: CreditCard },
     { id: 'cash', label: 'Cash', icon: Banknote },
     { id: 'code', label: 'Code', icon: Ticket },
