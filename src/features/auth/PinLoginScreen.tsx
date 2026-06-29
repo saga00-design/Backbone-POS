@@ -112,6 +112,7 @@ export const PinLoginScreen: React.FC = () => {
       await setDoc(doc(db, 'staffProfiles', googleUser.uid), sanitizeForFirestore({
         id: googleUser.uid,
         name: googleUser.displayName || 'Admin',
+        email: googleUser.email,
         pin: '1234',
         role: 'manager',
         locationId: POS_CONFIG.LOCATION_ID,
@@ -268,18 +269,6 @@ export const PinLoginScreen: React.FC = () => {
               <Copy className="w-3 h-3" />
               {isSyncing ? 'Syncing...' : 'Sync Users from Hub'}
             </button>
-            {googleUser && staffList.length > 0 && (
-              <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10">
-                <p className="text-[8px] text-text-muted uppercase font-bold mb-2">Available PINs (Debug):</p>
-                <div className="flex flex-wrap gap-2">
-                  {staffList.map(s => (
-                    <span key={s.id} className="text-[10px] text-white font-mono bg-white/10 px-2 py-1 rounded">
-                      {s.name}: {s.pin}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>

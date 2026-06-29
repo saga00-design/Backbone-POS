@@ -17,6 +17,7 @@ export interface PaymentRecord {
 export interface StaffProfile {
   id: string;
   name: string;
+  email?: string;
   pin: string;
   role: 'waiter' | 'chef' | 'bartender' | 'supervisor' | 'manager' | 'admin';
   permissions: {

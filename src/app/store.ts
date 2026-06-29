@@ -315,7 +315,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   addStaff: async (staffData) => {
     try {
       const id = `staff_${Math.random().toString(36).substring(7)}`;
-      const newStaff = { ...staffData, id };
+      const newStaff = { ...staffData, id, email: staffData.email };
       await setDoc(doc(db, 'staffProfiles', id), sanitizeForFirestore(newStaff));
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'staffProfiles');
