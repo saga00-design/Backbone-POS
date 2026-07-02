@@ -92,6 +92,7 @@ export const QuizChallengeModal: React.FC<{ onComplete: () => void }> = ({ onCom
     try {
       await addDoc(collection(db, 'quizSubmissions'), {
         staffId: currentStaff.id,
+        staffName: currentStaff.name,
         dishName: quiz.dishName,
         score,
         totalQuestions: quiz.questions.length,
