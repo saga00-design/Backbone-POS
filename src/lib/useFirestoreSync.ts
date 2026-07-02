@@ -3,7 +3,7 @@ import { db, auth } from './firebase';
 import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { usePOSStore } from '../app/store';
-import { MenuItemSnapshot, Zone, Table, StaffProfile, POSOrder, ModifierGroup, KDSTicket } from '../types/pos';
+import { MenuItemSnapshot, Zone, Table, StaffProfile, POSOrder, ModifierGroup, KDSTicket, UnavailableItem } from '../types/pos';
 import { POSTransaction } from '../types/transactions';
 import { initializeDatabase } from './seedData';
 import { parseFirestoreTimestamp } from './dateUtils';
@@ -15,7 +15,8 @@ export const useFirestoreSync = () => {
     setMenuItems, setCategories, setZones, setTables, setStaffList, 
     setAllOrders, setKdsHistory, setModifierGroups, setKdsTickets, 
     setBarKdsTickets, setActiveBriefing, setAcknowledgements, setPOSAlerts,
-    setCancelledSessions, setStockMovements, setQuizSubmissions, setAllTransactions
+    setCancelledSessions, setStockMovements, setQuizSubmissions, setAllTransactions,
+    setUnavailableItems
   } = usePOSStore();
   const LOCATION_ID = POS_CONFIG.LOCATION_ID;
 
@@ -188,6 +189,13 @@ export const useFirestoreSync = () => {
         setMenuItems(items);
       }, (err) => console.error("Items Sync Error:", err)));
 
+      // Sync Unavailable Items (86s and low stock — live from HUB)
+      const qUnavailable = query(collection(db, 'unavailableItems'), where('locationId', '==', LOCATION_ID));
+      unsubs.push(onSnapshot(qUnavailable, (snapshot) => {
+        const items = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UnavailableItem));
+        setUnavailableItems(items);
+      }, (err) => console.error("Unavailable Items Sync Error:", err)));
+
       // Sync Tables
       const qTables = query(collection(db, 'tables'), where('locationId', '==', LOCATION_ID));
       unsubs.push(onSnapshot(qTables, (snapshot) => {
@@ -221,5 +229,5 @@ export const useFirestoreSync = () => {
       unsubAuth();
       unsubs.forEach(unsub => unsub());
     };
-  }, [setMenuItems, setCategories, setZones, setTables, setStaffList, setAllOrders, setAllTransactions]);
+  }, [setMenuItems, setCategories, setZones, setTables, setStaffList, setAllOrders, setAllTransactions, setUnavailableItems]);
 };

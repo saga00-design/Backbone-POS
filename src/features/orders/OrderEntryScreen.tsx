@@ -1,8 +1,8 @@
 import React from 'react';
 import { usePOSStore, resolveCourseForItem } from '../../app/store';
-import { POSOrder, MenuItemSnapshot, ModifierSelection, PaymentMethod, POSOrderItem, Course, IngredientAction, AllergyCustomisation } from '../../types/pos';
+import { POSOrder, MenuItemSnapshot, ModifierSelection, PaymentMethod, POSOrderItem, Course, IngredientAction, AllergyCustomisation, UnavailableItem } from '../../types/pos';
 import { PricingEngine } from '../../domain/PricingEngine';
-import { ChevronLeft, Plus, Minus, Trash2, Send, CreditCard, Utensils, Gift, Percent, Printer, AlertTriangle, Info } from 'lucide-react';
+import { ChevronLeft, Plus, Minus, Trash2, Send, SendHorizonal, CreditCard, Utensils, Gift, Percent, Printer, AlertTriangle, Info } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ModifierModal } from '../../components/orders/ModifierModal';
 import { PaymentModal } from '../../components/orders/PaymentModal';
@@ -13,7 +13,7 @@ import { CancelSessionModal } from '../../components/orders/CancelSessionModal';
 import { POS_CONFIG } from '../../app/config';
 
 export const OrderEntryScreen: React.FC = () => {
-  const { activeTable, activeOrder, setActiveOrder, setActiveScreen, addItem, removeItem, updateQuantity, updateItemInOrder, processPayment, sendOrder, fireCourse, currentStaff, menuItems, categories } = usePOSStore();
+  const { activeTable, activeOrder, setActiveOrder, setActiveScreen, addItem, removeItem, updateQuantity, updateItemInOrder, processPayment, sendOrder, fireCourse, currentStaff, menuItems, categories, unavailableItems } = usePOSStore();
   const [activeCategory, setActiveCategory] = React.useState(categories[0]?.id || '');
   const [selectedItem, setSelectedItem] = React.useState<MenuItemSnapshot | null>(null);
   const [detailSelectedItem, setDetailSelectedItem] = React.useState<MenuItemSnapshot | null>(null);
@@ -253,22 +253,60 @@ export const OrderEntryScreen: React.FC = () => {
             {/* Items Grid */}
             <div className="flex-1 p-2 lg:p-6 overflow-y-auto">
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10 gap-1.5 md:gap-2">
-                {menuItems.filter(item => item.categoryId === activeCategory).map(item => (
+                {menuItems.filter(item => item.categoryId === activeCategory).map(item => {
+                  const unavail = unavailableItems.find(u => u.menuItemId === item.id);
+                  const is86d = unavail?.status === 'Unavailable (86)';
+                  const isLowStock = unavail?.status === 'Low Stock';
+                  const qtyLeft = unavail?.quantityRemaining;
+
+                  return (
                   <div 
                     key={item.id}
-                    className="aspect-[1.45/1] bg-bg-card border border-white/5 rounded-lg lg:rounded-xl flex flex-col hover:bg-bg-accent transition-all group overflow-hidden relative"
+                    className={cn(
+                      "aspect-[1.45/1] border rounded-lg lg:rounded-xl flex flex-col transition-all group overflow-hidden relative",
+                      is86d
+                        ? "bg-white/[0.02] border-red-900/40 opacity-50 cursor-not-allowed"
+                        : isLowStock
+                        ? "bg-bg-card border-amber-500/40 hover:bg-bg-accent"
+                        : "bg-bg-card border-white/5 hover:bg-bg-accent"
+                    )}
                   >
                     <button
-                      onClick={() => handleItemClick(item)}
-                      className="flex-1 p-1.5 lg:p-2.5 flex flex-col justify-between text-left w-full h-full"
+                      onClick={() => !is86d && handleItemClick(item)}
+                      disabled={is86d}
+                      className="flex-1 p-1.5 lg:p-2.5 flex flex-col justify-between text-left w-full h-full disabled:cursor-not-allowed"
                     >
-                      <span className="text-[10px] lg:text-xs font-bold text-white leading-tight uppercase tracking-tight line-clamp-2">{item.name}</span>
+                      <span className={cn(
+                        "text-[10px] lg:text-xs font-bold leading-tight uppercase tracking-tight line-clamp-2",
+                        is86d ? "text-white/30" : "text-white"
+                      )}>
+                        {item.name}
+                      </span>
                       <span className="text-[8px] lg:text-[10px] font-mono text-brand-primary font-bold">
                         {PricingEngine.formatCurrency(item.priceGross)}
                       </span>
                     </button>
+
+                    {/* 86'd overlay */}
+                    {is86d && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-red-500 bg-black/60 px-1.5 py-0.5 rounded">
+                          86'd
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Low stock badge */}
+                    {isLowStock && !is86d && (
+                      <div className="absolute top-0.5 right-0.5 pointer-events-none">
+                        <span className="text-[7px] font-black uppercase tracking-wide text-amber-400 bg-amber-900/60 px-1 py-0.5 rounded leading-none">
+                          {qtyLeft != null ? `${qtyLeft} left` : 'Low'}
+                        </span>
+                      </div>
+                    )}
                     
                     {/* View Details Overlay Toggle */}
+                    {!is86d && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -279,8 +317,10 @@ export const OrderEntryScreen: React.FC = () => {
                     >
                       <Info className="w-3.5 h-3.5" />
                     </button>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -530,7 +570,7 @@ export const OrderEntryScreen: React.FC = () => {
                 Cancel Session
               </button>
             ) : (
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-4 gap-1.5">
                 <button 
                   onClick={async () => {
                     await sendOrder();
@@ -541,6 +581,19 @@ export const OrderEntryScreen: React.FC = () => {
                 >
                   <Send className="w-3.5 h-3.5 text-brand-primary shrink-0" />
                   Send
+                </button>
+                <button 
+                  onClick={async () => {
+                    await sendOrder();
+                    // Stay on this table — useful for sending drinks/starters
+                    // first, then continuing to add mains/desserts.
+                  }}
+                  disabled={activeOrder.items.length === 0}
+                  className="h-10 bg-white/5 rounded-lg flex items-center justify-center gap-1 text-white font-black uppercase tracking-tight active:scale-95 transition-all border border-white/10 text-[10px] px-1"
+                  title="Send this course and keep adding to the order"
+                >
+                  <SendHorizonal className="w-3.5 h-3.5 text-brand-primary shrink-0" />
+                  <span>Send &amp; Stay</span>
                 </button>
                 <button 
                   onClick={() => setShowPayment(true)}

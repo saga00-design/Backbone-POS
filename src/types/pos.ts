@@ -331,3 +331,16 @@ export interface POSAlert {
   active: boolean;
   createdAt: number;
 }
+
+export type UnavailableStatus = 'Active' | 'Low Stock' | 'Unavailable (86)';
+
+export interface UnavailableItem {
+  id: string;
+  menuItemId: string;
+  name: string;
+  status: UnavailableStatus;
+  reason?: string;
+  quantityRemaining?: number;
+  locationId: string;
+  updatedAt: string;
+}

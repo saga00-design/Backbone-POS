@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { StaffProfile, POSOrder, Table, POSOrderItem, MenuItemSnapshot, Zone, PaymentMethod, POSOrderItemStatus, TableShape, PaymentRecord, ZReport, Course, ModifierGroup, KDSTicket, KDSTicketItem, ShiftBriefing, BriefingAcknowledgement, POSAlert, CancelledSession, StockMovement } from '../types/pos';
+import { StaffProfile, POSOrder, Table, POSOrderItem, MenuItemSnapshot, Zone, PaymentMethod, POSOrderItemStatus, TableShape, PaymentRecord, ZReport, Course, ModifierGroup, KDSTicket, KDSTicketItem, ShiftBriefing, BriefingAcknowledgement, POSAlert, CancelledSession, StockMovement, UnavailableItem } from '../types/pos';
 import { POSTransaction } from '../types/transactions';
 import { PricingEngine } from '../domain/PricingEngine';
 import { db, auth } from '../lib/firebase';
@@ -95,6 +95,8 @@ export interface POSState {
   // Master Data (Synced from Firestore)
   menuItems: MenuItemSnapshot[];
   setMenuItems: (items: MenuItemSnapshot[]) => void;
+  unavailableItems: UnavailableItem[];
+  setUnavailableItems: (items: UnavailableItem[]) => void;
   categories: { id: string; name: string; order: number }[];
   setCategories: (categories: { id: string; name: string; order: number }[]) => void;
   zones: Zone[];
@@ -295,6 +297,8 @@ export const usePOSStore = create<POSState>((set, get) => ({
   
   menuItems: [],
   setMenuItems: (items) => set({ menuItems: items }),
+  unavailableItems: [],
+  setUnavailableItems: (items) => set({ unavailableItems: items }),
   categories: [],
   setCategories: (categories) => set({ categories }),
   zones: [],
@@ -898,6 +902,67 @@ export const usePOSStore = create<POSState>((set, get) => ({
 
       await batch.commit();
       set({ activeOrder: sentOrder });
+
+      // Auto-decrement quantityRemaining for tracked items.
+      // Only process newly-drafted items (not previously sent ones).
+      try {
+        const { unavailableItems } = get();
+        if (unavailableItems.length > 0) {
+          const decrementBatch = writeBatch(db);
+          let hasDecrements = false;
+
+          for (const orderItem of newDraftItems) {
+            const unavail = unavailableItems.find(u => u.menuItemId === orderItem.menuItemId);
+            if (!unavail || unavail.quantityRemaining == null) continue;
+
+            const newQty = Math.max(0, (unavail.quantityRemaining ?? 0) - orderItem.quantity);
+            const newStatus = newQty <= 0 ? 'Unavailable (86)' : newQty <= 5 ? 'Low Stock' : 'Active';
+
+            if (newStatus === 'Active') {
+              // Delete the unavailableItems doc — item is back in full stock
+              decrementBatch.delete(doc(db, 'unavailableItems', unavail.id));
+            } else {
+              decrementBatch.update(doc(db, 'unavailableItems', unavail.id), {
+                quantityRemaining: newQty,
+                status: newStatus,
+                updatedAt: new Date().toISOString(),
+              });
+            }
+
+            hasDecrements = true;
+
+            // If just hit zero, auto-push to active briefing 86 list
+            if (newQty <= 0) {
+              try {
+                const briefingSnap = await getDocs(
+                  query(
+                    collection(db, 'shiftBriefings'),
+                    where('locationId', '==', POS_CONFIG.LOCATION_ID),
+                    where('active', '==', true)
+                  )
+                );
+                if (!briefingSnap.empty) {
+                  const briefingDoc = briefingSnap.docs[0];
+                  const existing86s: string[] = briefingDoc.data().items86 || [];
+                  const itemName = unavail.name;
+                  if (!existing86s.includes(itemName)) {
+                    await updateDoc(doc(db, 'shiftBriefings', briefingDoc.id), {
+                      items86: [...existing86s, itemName],
+                    });
+                  }
+                }
+              } catch {
+                // Non-critical — don't block the order send if briefing update fails
+              }
+            }
+          }
+
+          if (hasDecrements) await decrementBatch.commit();
+        }
+      } catch (err) {
+        // Non-critical — stock decrement failure should never block the order send
+        console.error('[Stock Decrement] Failed to update stock counts:', err);
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `posOrders/${sentOrder.id}`);
     }
