@@ -212,7 +212,7 @@ export const SAMPLE_POS_ORDERS: POSOrder[] = [
           description: 'Minty, zesty, fresh lime mocktail',
           allergies: ['Mint']
         },
-        modifiers: [],
+        addons: [],
         notes: 'Extra ice'
       },
       {
@@ -236,7 +236,7 @@ export const SAMPLE_POS_ORDERS: POSOrder[] = [
           description: 'Mexican pale lager',
           allergies: ['Gluten']
         },
-        modifiers: []
+        addons: []
       },
       {
         uuid: 'item_itm3',
@@ -257,11 +257,12 @@ export const SAMPLE_POS_ORDERS: POSOrder[] = [
           locationId: 'loc_camden',
           allergies: ['Dairy', 'Gluten', 'Peanut']
         },
-        modifiers: [
+        addons: [
           {
-            id: 'mod_no_coriander',
+            menuItemId: 'addon_no_coriander',
             name: 'No Coriander',
-            priceDelta: 0
+            priceGross: 0,
+            quantity: 1
           }
         ],
         notes: 'Allergy alert: PEANUT'
@@ -285,11 +286,12 @@ export const SAMPLE_POS_ORDERS: POSOrder[] = [
           locationId: 'loc_camden',
           allergies: ['Garlic', 'Gluten']
         },
-        modifiers: [
+        addons: [
           {
-            id: 'mod_extra_guac',
+            menuItemId: 'addon_extra_guac',
             name: 'Add Extra Guacamole',
-            priceDelta: 200
+            priceGross: 200,
+            quantity: 1
           }
         ]
       }

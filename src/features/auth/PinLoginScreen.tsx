@@ -116,7 +116,7 @@ export const PinLoginScreen: React.FC = () => {
         pin: '1234',
         role: 'manager',
         locationId: POS_CONFIG.LOCATION_ID,
-        permissions: { canVoid: true, canDiscount: true, canRefund: true, canManageFloor: true }
+        permissions: { canVoid: true, canDiscount: true, canRefund: true, canManageFloor: true, canVoidItem: true, canApplyDiscount: true }
       }));
       alert('Admin user created (PIN: 1234). You can now log in using the keypad.');
     } catch (err) {
@@ -189,28 +189,9 @@ export const PinLoginScreen: React.FC = () => {
 
   return (
     <div className="h-screen w-screen bg-bg-dark flex flex-col items-center justify-center p-6">
-      {/* Manager Identity (Google) */}
-      <div className="mb-8 flex items-center gap-3 px-6 py-3 rounded-2xl bg-white/5 border border-white/10">
-        {googleUser ? (
-          <>
-            <UserCheck className="w-4 h-4 text-status-available" />
-            <div className="flex flex-col">
-              <span className="text-[10px] font-black uppercase tracking-widest text-white">{googleUser.displayName}</span>
-              <span className="text-[8px] uppercase font-bold text-status-available tracking-tighter">Verified Manager</span>
-            </div>
-          </>
-        ) : (
-          <button 
-            onClick={handleGoogleLogin}
-            className="flex items-center gap-2 text-text-secondary hover:text-white transition-colors"
-          >
-            <LogIn className="w-4 h-4" />
-            <span className="text-[10px] uppercase font-black tracking-widest">Manager Login (Google)</span>
-          </button>
-        )}
-      </div>
 
-      <div className="mb-12 text-center">
+      {/* Logo + title + staff count */}
+      <div className="mb-8 text-center">
         <div className="w-20 h-20 bg-white/5 rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-2xl shadow-white/5 overflow-hidden p-3 border border-white/10">
           <img src="/Backbone-POS-icon.png" alt="Backbone" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
         </div>
@@ -223,7 +204,7 @@ export const PinLoginScreen: React.FC = () => {
 
       <div className="w-full max-w-sm">
         {/* PIN Display */}
-        <div className="flex justify-center gap-4 mb-12">
+        <div className="flex justify-center gap-4 mb-8">
           {[...Array(4)].map((_, i) => (
             <div 
               key={i}
@@ -235,8 +216,8 @@ export const PinLoginScreen: React.FC = () => {
           ))}
         </div>
 
-        {/* Keypad */}
-        <div className="grid grid-cols-3 gap-4">
+        {/* Keypad — 20% smaller */}
+        <div className="grid grid-cols-3 gap-3">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
             <KeyButton key={num} label={num.toString()} onClick={() => handlePress(num.toString())} />
           ))}
@@ -244,14 +225,15 @@ export const PinLoginScreen: React.FC = () => {
           <KeyButton label="0" onClick={() => handlePress('0')} />
           <button 
             onClick={handleDelete}
-            className="h-16 md:h-20 rounded-2xl md:rounded-3xl bg-white/5 flex items-center justify-center text-white/40 hover:bg-white/10 active:scale-95 transition-all"
+            className="h-[52px] md:h-16 rounded-xl md:rounded-2xl bg-white/5 flex items-center justify-center text-white/40 hover:bg-white/10 active:scale-95 transition-all"
           >
-            <Delete className="w-6 h-6 md:w-8 md:h-8" />
+            <Delete className="w-5 h-5 md:w-6 md:h-6" />
           </button>
         </div>
 
+        {/* Bootstrap / Sync buttons */}
         {(staffList.length === 0 || googleUser) && (
-          <div className="mt-12 flex flex-col gap-4 w-full">
+          <div className="mt-8 flex flex-col gap-4 w-full">
             {staffList.length === 0 && (
               <button 
                 onClick={bootstrapFirstUser}
@@ -271,6 +253,27 @@ export const PinLoginScreen: React.FC = () => {
             </button>
           </div>
         )}
+
+        {/* Manager Identity — moved to bottom */}
+        <div className="mt-8 flex items-center justify-center gap-3 px-6 py-3 rounded-2xl bg-white/5 border border-white/10">
+          {googleUser ? (
+            <>
+              <UserCheck className="w-4 h-4 text-status-available" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-black uppercase tracking-widest text-white">{googleUser.displayName}</span>
+                <span className="text-[8px] uppercase font-bold text-status-available tracking-tighter">Verified Manager</span>
+              </div>
+            </>
+          ) : (
+            <button 
+              onClick={handleGoogleLogin}
+              className="flex items-center gap-2 text-text-secondary hover:text-white transition-colors"
+            >
+              <LogIn className="w-4 h-4" />
+              <span className="text-[10px] uppercase font-black tracking-widest">Manager Login (Google)</span>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -286,7 +289,7 @@ const KeyButton: React.FC<KeyButtonProps> = ({ label, onClick, className }) => (
   <button 
     onClick={onClick}
     className={cn(
-      "h-16 md:h-20 rounded-2xl md:rounded-3xl bg-bg-card border border-white/5 flex items-center justify-center text-2xl md:text-3xl font-bold text-white hover:bg-bg-accent active:scale-95 transition-all shadow-sm",
+      "h-[52px] md:h-16 rounded-xl md:rounded-2xl bg-bg-card border border-white/5 flex items-center justify-center text-xl md:text-2xl font-bold text-white hover:bg-bg-accent active:scale-95 transition-all shadow-sm",
       className
     )}
   >

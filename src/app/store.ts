@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { StaffProfile, POSOrder, Table, POSOrderItem, MenuItemSnapshot, Zone, PaymentMethod, POSOrderItemStatus, TableShape, PaymentRecord, ZReport, Course, ModifierGroup, KDSTicket, KDSTicketItem, ShiftBriefing, BriefingAcknowledgement, POSAlert, CancelledSession, StockMovement, UnavailableItem } from '../types/pos';
+import { StaffProfile, POSOrder, Table, POSOrderItem, MenuItemSnapshot, Zone, PaymentMethod, POSOrderItemStatus, TableShape, PaymentRecord, ZReport, Course, KDSTicket, KDSTicketItem, ShiftBriefing, BriefingAcknowledgement, POSAlert, CancelledSession, StockMovement, UnavailableItem, SetMenu } from '../types/pos';
 import { POSTransaction } from '../types/transactions';
 import { PricingEngine } from '../domain/PricingEngine';
 import { db, auth } from '../lib/firebase';
@@ -97,15 +97,15 @@ export interface POSState {
   setMenuItems: (items: MenuItemSnapshot[]) => void;
   unavailableItems: UnavailableItem[];
   setUnavailableItems: (items: UnavailableItem[]) => void;
-  categories: { id: string; name: string; order: number }[];
-  setCategories: (categories: { id: string; name: string; order: number }[]) => void;
+  activeSetMenus: SetMenu[];
+  setActiveSetMenus: (setMenus: SetMenu[]) => void;
+  categories: { id: string; name: string; order: number; parentId?: string | null }[];
+  setCategories: (categories: { id: string; name: string; order: number; parentId?: string | null }[]) => void;
   zones: Zone[];
   setZones: (zones: Zone[]) => void;
   addZone: (name: string) => Promise<void>;
   tables: Table[];
   setTables: (tables: Table[]) => void;
-  modifierGroups: ModifierGroup[];
-  setModifierGroups: (groups: ModifierGroup[]) => void;
   staffList: StaffProfile[];
   setStaffList: (staff: StaffProfile[]) => void;
   addStaff: (staff: Omit<StaffProfile, 'id'>) => Promise<void>;
@@ -160,6 +160,8 @@ export interface POSState {
   toggleDesignMode: () => void;
   isDesignMode: boolean;
   syncFromHub: () => Promise<void>;
+  // TEMP MIGRATION — remove after confirming Fix 2 (Sides showing 0 items) resolved
+  fixSidesCategoryMismatch: () => Promise<void>;
   performEndOfDay: () => Promise<ZReport | null>;
   
   // Performance
@@ -189,9 +191,6 @@ export interface POSState {
 export const resolveCourseForItem = (item: MenuItemSnapshot | undefined, categoriesList: any[] = []): Course => {
   if (!item) return 'mains';
   
-  // Try checking itemType or isExtra
-  if ((item as any).itemType === 'extra' || (item as any).isExtra) return 'extras';
-
   const catId = item.categoryId || '';
   const categoryDoc = categoriesList.find(c => c.id === catId);
   const catName = (item as any).categoryName || categoryDoc?.name || catId || '';
@@ -211,7 +210,6 @@ export const resolveCourseForItem = (item: MenuItemSnapshot | undefined, categor
     if (t.includes('main')) return 'mains';
     if (t.includes('dessert')) return 'desserts';
     if (t.includes('side')) return 'sides';
-    if (t.includes('extra')) return 'extras';
     return null;
   };
 
@@ -299,6 +297,8 @@ export const usePOSStore = create<POSState>((set, get) => ({
   setMenuItems: (items) => set({ menuItems: items }),
   unavailableItems: [],
   setUnavailableItems: (items) => set({ unavailableItems: items }),
+  activeSetMenus: [],
+  setActiveSetMenus: (setMenus) => set({ activeSetMenus: setMenus }),
   categories: [],
   setCategories: (categories) => set({ categories }),
   zones: [],
@@ -312,8 +312,6 @@ export const usePOSStore = create<POSState>((set, get) => ({
   },
   tables: [],
   setTables: (tables) => set({ tables }),
-  modifierGroups: [],
-  setModifierGroups: (modifierGroups) => set({ modifierGroups }),
   staffList: [],
   setStaffList: (staffList) => set({ staffList }),
   addStaff: async (staffData) => {
@@ -418,23 +416,33 @@ export const usePOSStore = create<POSState>((set, get) => ({
   isDesignMode: false,
   toggleDesignMode: () => set((state) => ({ isDesignMode: !state.isDesignMode })),
 
+  // TEMP MIGRATION — remove after confirming Fix 2 (Sides showing 0 items) resolved
+  fixSidesCategoryMismatch: async () => {
+    const state = get();
+    const mismatched = state.menuItems.filter(i => i.categoryId === 'cat_sides');
+    for (const item of mismatched) {
+      await updateDoc(doc(db, 'menuItems', item.id), { categoryId: 'cat_extras' });
+    }
+    console.log(`[MIGRATION] Fixed categoryId 'cat_sides' -> 'cat_extras' for ${mismatched.length} item(s)`);
+  },
+
   syncFromHub: async () => {
     const { syncAllFromHub } = await import('../lib/backboneHub');
-    let { menuItems, categories, modifierGroups, users, zones, tables, briefing } = await syncAllFromHub();
-    
-    // Fallback to local seedData if hub is essentially empty
-    if (!menuItems && !categories && !users) {
+    let { users, zones, tables, briefing } = await syncAllFromHub();
+
+    // Fallback to local seedData if hub is essentially empty.
+    // Note: menuCategories/menuItems are deliberately excluded from this sync
+    // entirely - they're kept live via the Firestore listener in
+    // useFirestoreSync.ts and must never be overwritten from bundled seed data.
+    if (!users) {
       console.warn('Hub sync failed or returned no data. Falling back to local seedData...');
       const { seedData } = await import('../lib/seedData');
-      menuItems = seedData.menuItems as any;
-      categories = seedData.menuCategories as any;
       users = seedData.staffProfiles as any;
       zones = seedData.zones as any;
       tables = seedData.tables as any;
       briefing = seedData.shiftBriefings?.[0] as any;
-      modifierGroups = [];
-      
-      if (!menuItems && !categories && !users) {
+
+      if (!users) {
         throw new Error('No data could be fetched from the hub or local seed data.');
       }
     }
@@ -453,33 +461,6 @@ export const usePOSStore = create<POSState>((set, get) => ({
         }
       };
 
-      if (categories) {
-        for (const cat of categories) {
-          const sanitizedCat = { ...cat, locationId: POS_CONFIG.LOCATION_ID };
-          batch.set(doc(db, 'menuCategories', cat.id), sanitizeForFirestore(sanitizedCat));
-          count++;
-          totalCount++;
-          if (count >= 400) await commitBatch();
-        }
-      }
-      if (modifierGroups) {
-        for (const group of modifierGroups) {
-          const sanitizedGroup = { ...group, locationId: POS_CONFIG.LOCATION_ID };
-          batch.set(doc(db, 'modifierGroups', group.id), sanitizeForFirestore(sanitizedGroup));
-          count++;
-          totalCount++;
-          if (count >= 400) await commitBatch();
-        }
-      }
-      if (menuItems) {
-        for (const item of menuItems) {
-          const sanitizedItem = { ...item, locationId: POS_CONFIG.LOCATION_ID };
-          batch.set(doc(db, 'menuItems', item.id), sanitizeForFirestore(sanitizedItem));
-          count++;
-          totalCount++;
-          if (count >= 400) await commitBatch();
-        }
-      }
       if (users) {
         for (const user of users) {
           const sanitizedUser = {
@@ -553,7 +534,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
     }
     
     const uuid = Math.random().toString(36).substring(7);
-    const totalPrice = ((item.snapshot?.priceGross || 0) + item.modifiers.reduce((acc, m) => acc + m.priceDelta, 0)) * item.quantity;
+    const totalPrice = (item.snapshot?.priceGross || 0) * item.quantity;
     
     // Auto-assign course from snapshot if not provided
     const newItem: POSOrderItem = { 
@@ -617,8 +598,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
       if (i.uuid === uuid) {
         const newQty = Math.max(1, i.quantity + delta);
         const { totalPrice, discountAmount } = PricingEngine.calculateItemTotal(
-          i.snapshot?.priceGross || 0, 
-          i.modifiers, 
+          i.snapshot?.priceGross || 0,
           newQty,
           i.discountType,
           i.discountValue
@@ -657,7 +637,6 @@ export const usePOSStore = create<POSState>((set, get) => ({
         const merged = { ...i, ...updates };
         const { totalPrice, discountAmount } = PricingEngine.calculateItemTotal(
           merged.snapshot?.priceGross || 0,
-          merged.modifiers,
           merged.quantity,
           merged.discountType,
           merged.discountValue
@@ -718,11 +697,19 @@ export const usePOSStore = create<POSState>((set, get) => ({
 
     const newItems = state.activeOrder.items.map(i => {
       if (i.uuid === uuid) {
-        return { 
-          ...i, 
-          status: 'voided' as const, 
+        return {
+          ...i,
+          status: 'voided' as const,
           voidReason: reason,
-          notes: `${i.notes ? i.notes + ' ' : ''}[VOID: ${reason}]` 
+          notes: `${i.notes ? i.notes + ' ' : ''}[VOID: ${reason}]`
+        };
+      }
+      if (i.parentOrderItemUuid === uuid) {
+        return {
+          ...i,
+          status: 'voided' as const,
+          voidReason: 'Parent item voided',
+          totalPrice: 0
         };
       }
       return i;
@@ -829,7 +816,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
     const itemsWithCoursing = state.activeOrder.items.map(item => {
       let updatedItem = { ...item };
       if (updatedItem.status === 'draft') {
-        const isImmediate = updatedItem.course === 'drinks' || updatedItem.course === 'starters';
+        const isImmediate = updatedItem.course === 'drinks' || updatedItem.course === 'starters' || updatedItem.course === 'sides';
         updatedItem.status = isImmediate ? 'fired' : 'held';
         if (isImmediate) updatedItem.firedAt = Date.now();
       }
@@ -859,9 +846,22 @@ export const usePOSStore = create<POSState>((set, get) => ({
       }
 
       // 1. Split items that WERE draft by station
-      const newDraftItems = state.activeOrder.items.filter(i => i.status === 'draft');
-      const kitchenItems = newDraftItems.filter(i => i.snapshot?.station !== 'bar');
-      const barItems = newDraftItems.filter(i => i.snapshot?.station === 'bar');
+      const newDraftItems = state.activeOrder.items.filter(i => i.status === 'draft' && !i.isSetMenuCharge);
+      const BAR_CATEGORY_IDS = [
+        'cat_drinks', 'cat_margaritas', 'cat_cocktails', 'cat_mocktails',
+        'cat_beers', 'cat_wines', 'cat_wine_white', 'cat_wine_red', 'cat_wine_rose',
+        'cat_wine_sparkling', 'cat_spirits', 'cat_tequila', 'cat_mezcal', 'cat_rum',
+        'cat_vodka', 'cat_whiskey', 'cat_gin', 'cat_brandy', 'cat_cognac', 'cat_liqueur',
+        'cat_soft_drinks', 'cat_juices', 'cat_jarritos', 'cat_aguas_frescas', 'cat_water',
+        'cat_sodas', 'cat_mixers', 'cat_hot_drinks'
+      ];
+      const isBarItem = (item: POSOrderItem): boolean =>
+        item.snapshot?.station === 'bar' ||
+        item.snapshot?.isDrink === true ||
+        BAR_CATEGORY_IDS.includes(item.snapshot?.categoryId || '');
+
+      const kitchenItems = newDraftItems.filter(i => !i.isSetMenuCharge && !isBarItem(i));
+      const barItems = newDraftItems.filter(i => !i.isSetMenuCharge && isBarItem(i));
 
       const tableName = state.tables.find(t => t.id === sentOrder.tableId)?.name || sentOrder.tableId;
 
@@ -877,12 +877,13 @@ export const usePOSStore = create<POSState>((set, get) => ({
           station,
           status: 'pending',
           items: stationItems.map(i => {
-             const isImmediate = i.course === 'drinks' || i.course === 'starters';
+             const isImmediate = i.course === 'drinks' || i.course === 'starters' || i.course === 'sides';
              return {
                 uuid: i.uuid,
+                parentOrderItemUuid: i.parentOrderItemUuid,
                 name: i.snapshot?.name || 'Unknown Item',
                 quantity: i.quantity,
-                modifiers: i.modifiers,
+                modifiers: [],
                 notes: i.notes,
                 course: i.course,
                 status: isImmediate ? 'pending' : 'held'
@@ -1104,7 +1105,6 @@ export const usePOSStore = create<POSState>((set, get) => ({
           totalPrice: Number(i.totalPrice) || 0,
           discountAmount: Number(i.discountAmount) || 0,
           vatRate: Number(i.snapshot?.vatRate) || 0,
-          modifiers: i.modifiers.map(m => ({ name: m.name, priceDelta: m.priceDelta, cost: m.cost })),
           notes: i.notes || '',
           status: i.status
         }))
@@ -1511,13 +1511,58 @@ export const usePOSStore = create<POSState>((set, get) => ({
     const state = get();
     const collectionName = station === 'bar' ? 'barKdsTickets' : 'kdsTickets';
     try {
+      const ticketRef = doc(db, collectionName, ticketId);
+
+      // Bumping is a per-course action: only the currently active
+      // (pending/preparing) items get marked 'bumped'. The ticket itself
+      // only flips to 'bumped' — and only then gets a kdsHistory entry —
+      // once every item on it, across every course, has been bumped.
+      if (status === 'bumped') {
+        // Read the authoritative ticket doc — do not rely on the local
+        // store snapshot, which may be stale.
+        const ticketSnap = await getDoc(ticketRef);
+        if (!ticketSnap.exists()) return;
+        const ticketData = ticketSnap.data() as KDSTicket;
+
+        const newItems = ticketData.items.map(i =>
+          i.status === 'pending' || i.status === 'preparing'
+            ? { ...i, status: 'bumped' as const }
+            : i
+        );
+        const allItemsBumped = newItems.every(i => i.status === 'bumped');
+
+        const updates: any = { items: newItems };
+        if (allItemsBumped) {
+          updates.status = 'bumped';
+          updates.bumpedAt = Date.now();
+        }
+
+        await updateDoc(ticketRef, sanitizeForFirestore(updates));
+
+        if (allItemsBumped) {
+          const historyRef = doc(collection(db, 'kdsHistory'));
+          await setDoc(historyRef, sanitizeForFirestore({
+            ticketId,
+            orderId: ticketData.orderId,
+            tableId: ticketData.tableId,
+            tableName: ticketData.tableName,
+            station,
+            items: newItems,
+            createdAt: ticketData.createdAt,
+            completedAt: Date.now(),
+            locationId: ticketData.locationId
+          }));
+        }
+        return;
+      }
+
       const updates: any = { status };
       if (status === 'preparing') updates.startedAt = Date.now();
       if (status === 'ready') updates.completedAt = Date.now();
-      if (status === 'served' || status === 'bumped') updates.bumpedAt = Date.now();
+      if (status === 'served') updates.bumpedAt = Date.now();
 
-      await updateDoc(doc(db, collectionName, ticketId), sanitizeForFirestore(updates));
-      
+      await updateDoc(ticketRef, sanitizeForFirestore(updates));
+
       // EXPO LOGIC: If a ticket transitions to 'ready', check if the ENTIRE order is now ready
       if (status === 'ready') {
         const ticket = (station === 'bar' ? state.barKdsTickets : state.kdsTickets).find(t => t.id === ticketId);
@@ -1636,7 +1681,6 @@ export const usePOSStore = create<POSState>((set, get) => ({
         items: stationItems.map(i => ({
           name: i.snapshot?.name || 'Unknown Item',
           quantity: i.quantity,
-          modifiers: i.modifiers,
           notes: i.notes
         })),
         locationId: order.locationId

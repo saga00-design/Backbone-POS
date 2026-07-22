@@ -1,6 +1,6 @@
 import { storage } from './firebase';
 import { ref, getDownloadURL } from 'firebase/storage';
-import { MenuItemSnapshot, StaffProfile, Zone, Table, ModifierGroup, ShiftBriefing } from '../types/pos';
+import { StaffProfile, Zone, Table, ShiftBriefing } from '../types/pos';
 import { POS_CONFIG } from '../app/config';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -13,23 +13,28 @@ export const fetchHubData = async <T>(fileName: string): Promise<T | null> => {
   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
   try {
-    // Try primary filename with cache buster
-    let url = `https://firebasestorage.googleapis.com/v0/b/${HUB_BUCKET}/o/${encodeURIComponent(fileName)}?alt=media&t=${Date.now()}`;
-    console.log(`Fetching ${fileName} from hub (${HUB_BUCKET})...`);
-    let response = await fetch(url, { signal: controller.signal });
-
-    // Fallback to camelCase if snake_case fails for menu_items
-    if (!response.ok && fileName === 'menu_items.json') {
-      const fallbackName = 'menuItems.json';
-      console.log(`Retrying with ${fallbackName}...`);
-      url = `https://firebasestorage.googleapis.com/v0/b/${HUB_BUCKET}/o/${encodeURIComponent(fallbackName)}?alt=media&t=${Date.now()}`;
-      response = await fetch(url, { signal: controller.signal });
+    // Resolve an authorized download URL via the Storage SDK (includes the
+    // access token) instead of guessing an unauthenticated media URL, which
+    // Firebase Storage rejects and previously caused every sync to silently
+    // fall back to the bundled local seed data.
+    let downloadUrl: string;
+    try {
+      downloadUrl = await getDownloadURL(ref(storage, fileName));
+    } catch (resolveError: any) {
+      // Fallback to camelCase if snake_case file doesn't exist for menu_items
+      if (fileName === 'menu_items.json') {
+        console.log(`${fileName} not found, retrying with menuItems.json...`);
+        downloadUrl = await getDownloadURL(ref(storage, 'menuItems.json'));
+      } else {
+        throw resolveError;
+      }
     }
 
+    console.log(`Fetching ${fileName} from hub (${HUB_BUCKET})...`);
+    const response = await fetch(`${downloadUrl}&t=${Date.now()}`, { signal: controller.signal });
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      const errorText = await response.text();
       console.warn(`Hub fetch warning for ${fileName}: ${response.status} ${response.statusText}`);
       return null;
     }
@@ -44,25 +49,24 @@ export const fetchHubData = async <T>(fileName: string): Promise<T | null> => {
 };
 
 export interface HubData {
-  menuItems: MenuItemSnapshot[];
-  categories: { id: string; name: string; order: number }[];
-  modifierGroups: ModifierGroup[];
   users: StaffProfile[];
   zones: Zone[];
   tables: Table[];
   briefing: ShiftBriefing | null;
 }
 
+// menuCategories/menuItems are intentionally NOT fetched here. They're kept
+// live via the Firestore listener in useFirestoreSync.ts, and fetching them
+// from a Storage JSON snapshot was unreliable (CORS) and, on failure, silently
+// overwrote real Hub data with stale bundled seed data. This sync is scoped to
+// its original purpose: staff/zones/tables/briefing.
 export const syncAllFromHub = async () => {
-  const menuItems = await fetchHubData<MenuItemSnapshot[]>(POS_CONFIG.HUB_FILES.MENU);
-  const categories = await fetchHubData<{ id: string; name: string; order: number }[]>(POS_CONFIG.HUB_FILES.CATEGORIES);
-  const modifierGroups = await fetchHubData<ModifierGroup[]>(POS_CONFIG.HUB_FILES.MODIFIERS);
   const users = await fetchHubData<StaffProfile[]>(POS_CONFIG.HUB_FILES.STAFF);
   const zones = await fetchHubData<Zone[]>(POS_CONFIG.HUB_FILES.ZONES);
   const tables = await fetchHubData<Table[]>(POS_CONFIG.HUB_FILES.TABLES);
   const briefing = await fetchHubData<ShiftBriefing>(POS_CONFIG.HUB_FILES.BRIEFING);
-  
-  return { menuItems, categories, modifierGroups, users, zones, tables, briefing };
+
+  return { users, zones, tables, briefing };
 };
 
 /**

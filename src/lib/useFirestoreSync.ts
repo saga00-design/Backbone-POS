@@ -3,7 +3,7 @@ import { db, auth } from './firebase';
 import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { usePOSStore } from '../app/store';
-import { MenuItemSnapshot, Zone, Table, StaffProfile, POSOrder, ModifierGroup, KDSTicket, UnavailableItem } from '../types/pos';
+import { MenuItemSnapshot, Zone, Table, StaffProfile, POSOrder, KDSTicket, UnavailableItem, SetMenu } from '../types/pos';
 import { POSTransaction } from '../types/transactions';
 import { initializeDatabase } from './seedData';
 import { parseFirestoreTimestamp } from './dateUtils';
@@ -12,11 +12,11 @@ import { POS_CONFIG } from '../app/config';
 
 export const useFirestoreSync = () => {
   const { 
-    setMenuItems, setCategories, setZones, setTables, setStaffList, 
-    setAllOrders, setKdsHistory, setModifierGroups, setKdsTickets, 
+    setMenuItems, setCategories, setZones, setTables, setStaffList,
+    setAllOrders, setKdsHistory, setKdsTickets,
     setBarKdsTickets, setActiveBriefing, setAcknowledgements, setPOSAlerts,
     setCancelledSessions, setStockMovements, setQuizSubmissions, setAllTransactions,
-    setUnavailableItems
+    setUnavailableItems, setActiveSetMenus
   } = usePOSStore();
   const LOCATION_ID = POS_CONFIG.LOCATION_ID;
 
@@ -111,13 +111,6 @@ export const useFirestoreSync = () => {
         setBarKdsTickets(tickets.sort((a, b) => a.createdAt - b.createdAt));
       }, (err) => console.error("KDS Bar Sync Error:", err)));
 
-      // Sync Modifier Groups
-      const qModGroups = query(collection(db, 'modifierGroups'), where('locationId', '==', LOCATION_ID));
-      unsubs.push(onSnapshot(qModGroups, (snapshot) => {
-        const groups = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ModifierGroup));
-        setModifierGroups(groups);
-      }, (err) => console.error("Modifier Groups Sync Error:", err)));
-
       // Sync Orders (for reporting)
       const qOrders = query(collection(db, 'posOrders'), where('locationId', '==', LOCATION_ID));
       unsubs.push(onSnapshot(qOrders, (snapshot) => {
@@ -195,6 +188,17 @@ export const useFirestoreSync = () => {
         const items = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as UnavailableItem));
         setUnavailableItems(items);
       }, (err) => console.error("Unavailable Items Sync Error:", err)));
+
+      // Sync Active Set Menus & Specials
+      const qSetMenus = query(
+        collection(db, 'setMenus'),
+        where('locationId', '==', LOCATION_ID),
+        where('isActive', '==', true)
+      );
+      unsubs.push(onSnapshot(qSetMenus, (snapshot) => {
+        const setMenus = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SetMenu));
+        setActiveSetMenus(setMenus);
+      }, (err) => console.error("Set Menus Sync Error:", err)));
 
       // Sync Tables
       const qTables = query(collection(db, 'tables'), where('locationId', '==', LOCATION_ID));

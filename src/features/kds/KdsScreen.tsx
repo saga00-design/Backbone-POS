@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePOSStore } from '../../app/store';
 import { KDSTicket, KDSTicketItem, Course } from '../../types/pos';
-import { Clock, CheckCircle2, ChefHat, Wine, AlertCircle, Play, CheckCircle, ArrowRightCircle } from 'lucide-react';
+import { Clock, CheckCircle2, ChefHat, Wine, AlertCircle, Play, CheckCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { playNotificationSound } from '../../lib/notifications';
+import { ringKitchenBell, ringBarBell } from '../../lib/bellSound';
 
 interface KdsScreenProps {
   station: 'kitchen' | 'bar';
@@ -15,11 +16,21 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
   const [showHistory, setShowHistory] = useState(false);
   const [now, setNow] = useState(Date.now());
   const prevTicketsCount = useRef<number>(0);
-  
-  const currentTickets = (station === 'bar' ? barKdsTickets : kdsTickets).filter(t => 
-    t.status !== 'bumped' && t.status !== 'served' &&
-    t.items.some(i => (i.status as string) !== 'held')
-  );
+  const prevStatuses = useRef<Record<string, string>>({});
+  const prevBumpedCounts = useRef<Record<string, number>>({});
+
+  const stationTickets = station === 'bar' ? barKdsTickets : kdsTickets;
+
+  // A ticket stays visible as long as it isn't fully bumped — 'bumped'
+  // hides it only once every item has actually been bumped too, so a
+  // ticket waiting on held items for the next course still shows.
+  const currentTickets = stationTickets.filter(t => {
+    if (t.status === 'served') return false;
+    const hasUnfinishedItems = t.items.some(i =>
+      i.status === 'pending' || i.status === 'preparing' || (i.status as string) === 'held'
+    );
+    return (t.status as string) !== 'bumped' || hasUnfinishedItems;
+  });
 
   // Sound notification effect
   useEffect(() => {
@@ -28,6 +39,51 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
     }
     prevTicketsCount.current = currentTickets.length;
   }, [currentTickets.length]);
+
+  // Bell — rings whenever a course is bumped (some items newly marked
+  // 'bumped') or the whole ticket transitions to 'bumped'. Watches the
+  // unfiltered per-station list (not currentTickets) since a fully-bumped
+  // ticket is immediately excluded from currentTickets — the transition
+  // would never be observed otherwise.
+  useEffect(() => {
+    stationTickets.forEach(ticket => {
+      const prevStatus = prevStatuses.current[ticket.id];
+      const currStatus = ticket.status;
+      const prevBumpedCount = prevBumpedCounts.current[ticket.id];
+      const currBumpedCount = ticket.items.filter(i => (i.status as string) === 'bumped').length;
+
+      const ticketFullyBumped = prevStatus && prevStatus !== 'bumped' && currStatus === 'bumped';
+      const courseJustBumped = prevBumpedCount !== undefined && currBumpedCount > prevBumpedCount;
+
+      if (ticketFullyBumped || courseJustBumped) {
+        if (station === 'bar') {
+          ringBarBell();
+        } else {
+          ringKitchenBell();
+        }
+      }
+
+      prevStatuses.current[ticket.id] = currStatus;
+      prevBumpedCounts.current[ticket.id] = currBumpedCount;
+    });
+  }, [stationTickets, station]);
+
+  // Unlock audio on first user interaction (browser autoplay restriction)
+  useEffect(() => {
+    const unlock = () => {
+      const ctx = new (window.AudioContext ||
+                      (window as any).webkitAudioContext)();
+      ctx.resume().then(() => ctx.close());
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('touchstart', unlock);
+    };
+    document.addEventListener('click', unlock);
+    document.addEventListener('touchstart', unlock);
+    return () => {
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('touchstart', unlock);
+    };
+  }, []);
 
   // Timer refresh
   useEffect(() => {
@@ -68,10 +124,10 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
             <p className="text-[10px] text-text-secondary font-black uppercase tracking-widest">Station Display v2.0</p>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-6">
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={() => setShowHistory(false)}
               className={cn(
                 "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
@@ -80,7 +136,7 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
             >
               LIVE
             </button>
-            <button 
+            <button
               onClick={() => setShowHistory(true)}
               className={cn(
                 "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
@@ -90,7 +146,7 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
               HISTORY
             </button>
           </div>
-          
+
           <div className="h-10 w-px bg-white/5" />
           <div className="text-right">
             <p className="text-[10px] text-text-muted font-black uppercase tracking-widest">ACTIVE</p>
@@ -112,7 +168,7 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
                  </div>
                  <div className="p-6 space-y-2">
                     {h.items.map((item: any, idx: number) => (
-                      <p key={idx} className="text-xs text-white/50 font-bold uppercase tracking-tight">{item.quantity}x {item.name}</p>
+                      <p key={idx} className="text-xs text-white/50 font-bold uppercase tracking-tight">{item.quantity}x {item.name?.replace(/\s*batch\s*/gi, '').trim()}</p>
                     ))}
                  </div>
               </div>
@@ -123,8 +179,22 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
               const urgencyColor = getUrgencyColor(elapsed);
               const urgencyBg = getUrgencyBg(elapsed);
 
+              // Items now carry their own 'bumped' status independent of the
+              // ticket — bumping only marks the active course's items done,
+              // so completion reads from the item, not ticket.status.
+              const hasActiveItems = ticket.items.some(i => i.status === 'pending' || i.status === 'preparing');
+              const hasHeldItems = ticket.items.some(i => (i.status as string) === 'held');
+              const activeCourse = ticket.items
+                .filter(i => i.status === 'pending' || i.status === 'preparing')
+                .map(i => i.course)[0];
+              const bumpLabel = station === 'bar'
+                ? 'READY ✓'
+                : activeCourse
+                ? `DONE — ${activeCourse.toUpperCase()} ✓`
+                : 'BUMP TO DONE';
+
               return (
-                <motion.div 
+                <motion.div
                   key={ticket.id}
                   layout
                   initial={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -164,18 +234,57 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
                   </div>
 
                   {/* Items List */}
+                  {(() => {
+                    const visibleItems = ticket.items.filter(i => !i.parentOrderItemUuid);
+                    return (
                   <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar min-h-[300px]">
                     <div className="space-y-4">
-                      {ticket.items.filter(i => (i.status as string) !== 'held').map((item, idx) => (
-                        <div key={item.uuid} className="space-y-2">
+                      {visibleItems.map((item, idx) => {
+                        const itemBumped = (item.status as string) === 'bumped';
+                        return (
+                        <div
+                          key={item.uuid}
+                          className={cn(
+                            "space-y-2 transition-all",
+                            item.status === 'held' && "opacity-40",
+                            itemBumped && "opacity-30"
+                          )}
+                        >
                           <div className="flex items-start gap-3">
                             <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-xs font-black text-white shrink-0 mt-0.5">
                               {item.quantity}
                             </span>
                             <div className="flex-1">
-                              <h4 className="text-base font-black text-white uppercase tracking-tight leading-tight">
+                              <h4 className={cn(
+                                "text-base font-black uppercase tracking-tight leading-tight",
+                                item.status === 'held' ? "text-white/60" : "text-white",
+                                itemBumped && "line-through text-text-muted"
+                              )}>
                                 {item.name}
                               </h4>
+                              {/* Course + Held/Done badge row */}
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span className={cn(
+                                  "text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded",
+                                  itemBumped
+                                    ? "bg-emerald-500/10 text-emerald-500"
+                                    : item.status === 'held'
+                                    ? "bg-white/5 text-text-muted"
+                                    : "bg-brand-primary/20 text-brand-primary"
+                                )}>
+                                  {itemBumped ? "✓ " : ""}{item.course || 'mains'}
+                                </span>
+                                {item.status === 'held' && !itemBumped && (
+                                  <span className="text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500">
+                                    HELD
+                                  </span>
+                                )}
+                                {itemBumped && (
+                                  <span className="text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500">
+                                    DONE
+                                  </span>
+                                )}
+                              </div>
                               {item.modifiers?.length > 0 && (
                                 <div className="mt-1.5 flex flex-wrap gap-1">
                                   {item.modifiers.map((m, mIdx) => (
@@ -192,12 +301,28 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
                                   </p>
                                 </div>
                               )}
+                              {/* Addons — shown inside parent item, like notes */}
+                              {ticket.items
+                                .filter(a => a.parentOrderItemUuid === item.uuid)
+                                .map(addon => (
+                                  <div key={addon.uuid}
+                                       className="flex items-center gap-1.5 mt-1">
+                                    <div className="w-1 self-stretch bg-brand-primary rounded-full shrink-0" />
+                                    <span className="text-[11px] font-black text-brand-primary uppercase tracking-wide">
+                                      {addon.name.replace(/\s*batch\s*/gi, '').trim()}
+                                    </span>
+                                  </div>
+                                ))
+                              }
                             </div>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
+                    );
+                  })()}
 
                   {/* Actions */}
                   <div className="p-6 bg-white/5 border-t border-white/5 gap-3 flex flex-col">
@@ -210,33 +335,41 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
                       </div>
                     )}
                     {ticket.status === 'pending' && (
-                      <button 
+                      <button
                         onClick={() => updateKdsTicketStatus(ticket.id, station, 'preparing')}
                         className="w-full py-4 bg-white/10 hover:bg-white/20 text-white rounded-2xl flex items-center justify-center gap-3 transition-all group"
                       >
                         <Play className="w-5 h-5 text-brand-primary group-hover:scale-110 transition-transform" />
-                        <span className="text-xs font-black uppercase tracking-widest">START PREP</span>
-                      </button>
-                    )}
-                    
-                    {ticket.status === 'preparing' && (
-                      <button 
-                        onClick={() => updateKdsTicketStatus(ticket.id, station, 'ready')}
-                        className="w-full py-4 bg-brand-primary text-white rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-brand-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
-                      >
-                        <CheckCircle className="w-5 h-5" />
-                        <span className="text-xs font-black uppercase tracking-widest">COMPLETE TICKET</span>
+                        <span className="text-xs font-black uppercase tracking-widest">
+                          {station === 'bar' ? 'START' : 'START PREP'}
+                        </span>
                       </button>
                     )}
 
-                    {ticket.status === 'ready' && (
-                      <button 
+                    {ticket.status === 'preparing' && hasActiveItems && (
+                      <button
                         onClick={() => updateKdsTicketStatus(ticket.id, station, 'bumped')}
-                        className="w-full py-4 bg-status-available text-bg-dark rounded-2xl flex items-center justify-center gap-3 font-black shadow-xl shadow-status-available/20"
+                        className="w-full py-4 bg-brand-primary text-white rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-brand-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
                       >
-                        <ArrowRightCircle className="w-5 h-5" />
-                        <span className="text-xs uppercase tracking-widest">BUMP TO DONE</span>
+                        <CheckCircle className="w-5 h-5" />
+                        <span className="text-xs font-black uppercase tracking-widest">
+                          {bumpLabel}
+                        </span>
                       </button>
+                    )}
+
+                    {ticket.status === 'preparing' && !hasActiveItems && hasHeldItems && (
+                      <div className="flex flex-col items-center justify-center gap-2 py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                          <span className="text-[10px] font-black uppercase tracking-widest text-amber-500">
+                            Waiting for next course
+                          </span>
+                        </div>
+                        <span className="text-[8px] text-text-muted font-bold uppercase tracking-widest">
+                          {ticket.items.filter(i => (i.status as string) === 'held').length} items held
+                        </span>
+                      </div>
                     )}
 
                     <div className="flex justify-between items-center text-[10px] font-black text-text-muted uppercase tracking-[0.2em] px-2">
@@ -244,9 +377,9 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
                        <span className={cn(
                          ticket.status === 'pending' && "text-amber-500",
                          ticket.status === 'preparing' && "text-brand-primary",
-                         ticket.status === 'ready' && "text-status-available"
+                         (ticket.status as string) === 'bumped' && "text-emerald-500"
                        )}>
-                         {ticket.status}
+                         {ticket.status === 'pending' ? 'PENDING' : ticket.status === 'preparing' ? 'PREPARING' : (ticket.status as string) === 'bumped' ? 'DONE' : ticket.status}
                        </span>
                     </div>
                   </div>

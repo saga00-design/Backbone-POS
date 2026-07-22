@@ -144,10 +144,10 @@ export const ReceiptPreview: React.FC<ReceiptPreviewProps> = ({
                 )}
               </div>
               
-              {/* Modifiers */}
-              {template.items.showModifiers && item.modifiers && item.modifiers.length > 0 && (
+              {/* Add-ons */}
+              {template.items.showModifiers && item.addons && item.addons.length > 0 && (
                 <div className="text-[10px] text-gray-500 pl-4">
-                  {item.modifiers.map(m => `+ ${m.name}`).join(', ')}
+                  {item.addons.map(a => a.name.replace(/\s*batch\s*/gi, '').trim()).join(', ')}
                 </div>
               )}
 

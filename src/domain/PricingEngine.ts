@@ -1,13 +1,12 @@
-import { POSOrderItem, ModifierSelection } from '../types/pos';
+import { POSOrderItem } from '../types/pos';
 import { POS_CONFIG } from '../app/config';
 
 export const PricingEngine = {
   /**
-   * Calculates the total for a single item including modifiers and discounts
+   * Calculates the total for a single item including discounts
    */
-  calculateItemTotal: (basePrice: number, modifiers: ModifierSelection[], quantity: number, discountType?: 'percentage' | 'fixed', discountValue?: number): { totalPrice: number, discountAmount: number } => {
-    const modsTotal = modifiers.reduce((acc, m) => acc + m.priceDelta, 0);
-    const subtotal = (basePrice + modsTotal) * quantity;
+  calculateItemTotal: (basePrice: number, quantity: number, discountType?: 'percentage' | 'fixed', discountValue?: number): { totalPrice: number, discountAmount: number } => {
+    const subtotal = basePrice * quantity;
     
     let discountAmount = 0;
     if (discountType === 'percentage' && discountValue) {
@@ -85,11 +84,10 @@ export const PricingEngine = {
   calculateOrderTotals: (items: POSOrderItem[], orderDiscountType?: 'percentage' | 'fixed', orderDiscountValue?: number) => {
     const activeItems = items.filter(i => i.status !== 'voided');
     
-    // 1. Gross Subtotal: sum of all items at original menu price (incl. modifiers)
+    // 1. Gross Subtotal: sum of all items at original menu price
     const grossSubtotal = activeItems.reduce((acc, i) => {
       const dbPrice = i.snapshot.priceGross || 0;
-      const modifiersDelta = i.modifiers.reduce((sum, m) => sum + m.priceDelta, 0);
-      return acc + (dbPrice + modifiersDelta) * i.quantity;
+      return acc + dbPrice * i.quantity;
     }, 0);
 
     // 2. Item-level discounts
@@ -111,7 +109,7 @@ export const PricingEngine = {
     // 5. VAT (calculated on the net price)
     const vatTotal = activeItems.reduce((acc, i) => {
       const rate = i.snapshot.vatRate || POS_CONFIG.DEFAULT_VAT_RATE;
-      const itemGross = (i.snapshot.priceGross + i.modifiers.reduce((s, m) => s + m.priceDelta, 0)) * i.quantity;
+      const itemGross = i.snapshot.priceGross * i.quantity;
       const itemDiscount = i.discountAmount || 0;
       // Pro-rate order discount across items for accurate VAT?
       // Simplifying: use the ratio of (netSubtotal / grossSubtotal) to get rough VAT
@@ -126,8 +124,7 @@ export const PricingEngine = {
     // 6. Cost Calculation (COGS)
     const totalCost = activeItems.reduce((acc, i) => {
       const baseCost = i.snapshot.cost || 0;
-      const modifiersCost = i.modifiers.reduce((sum, m) => sum + (m.cost || 0), 0);
-      return acc + (baseCost + modifiersCost) * i.quantity;
+      return acc + baseCost * i.quantity;
     }, 0);
 
     return {
@@ -163,22 +160,6 @@ export const PricingEngine = {
           deductions[key] = { name: req.name, quantity: 0, unit: req.unit };
         }
         deductions[key].quantity += (req.quantity * multiplier) * item.quantity;
-      });
-
-      // 2. Modifier Requirements
-      item.modifiers.forEach(sel => {
-        // Find modifier definition in snapshot to get its specific stock needs
-        const modDef = item.snapshot.modifierGroups
-          ?.flatMap(g => g.modifiers)
-          .find(m => m.id === sel.id);
-        
-        modDef?.stockRequirements?.forEach(req => {
-          const key = `${req.name}_${req.unit}`;
-          if (!deductions[key]) {
-            deductions[key] = { name: req.name, quantity: 0, unit: req.unit };
-          }
-          deductions[key].quantity += req.quantity * item.quantity;
-        });
       });
     });
 

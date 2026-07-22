@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { MenuItemSnapshot, ModifierSelection, IngredientAction, AllergyCustomisation } from '../../types/pos';
-import { X, Check, Plus, Minus, Info, AlertCircle, ShoppingCart, ShieldAlert } from 'lucide-react';
+import { X, Plus, Minus, Info, AlertCircle, ShoppingCart, ShieldAlert } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { PricingEngine } from '../../domain/PricingEngine';
-import { usePOSStore } from '../../app/store';
 import { UK_ALLERGENS } from '../../features/menu/MenuManagementScreen';
 
 interface ItemDetailModalProps {
@@ -19,8 +18,7 @@ interface ItemDetailModalProps {
 }
 
 export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose, onConfirm }) => {
-  const { modifierGroups } = usePOSStore();
-  const [selections, setSelections] = useState<ModifierSelection[]>([]);
+  const [selections] = useState<ModifierSelection[]>([]);
   const [adjustments, setAdjustments] = useState<Record<string, IngredientAction>>({});
   const [notes, setNotes] = useState('');
   const [quantity, setQuantity] = useState(1);
@@ -28,21 +26,6 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
   const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
   const [allergySeverity, setAllergySeverity] = useState<'Allergic' | 'Intolerant'>('Allergic');
   const [crossContamOk, setCrossContamOk] = useState<boolean>(false);
-
-  // Find "Common Extras" or "Global Extras" group
-  const commonExtrasGroup = modifierGroups.find(g => 
-    g.name.toLowerCase().includes('extra') || 
-    g.name.toLowerCase().includes('common')
-  );
-
-  const toggleExtra = (extra: { id: string, name: string, priceDelta: number }) => {
-    const isSelected = selections.some(s => s.id === extra.id);
-    if (isSelected) {
-      setSelections(selections.filter(s => s.id !== extra.id));
-    } else {
-      setSelections([...selections, { id: extra.id, name: extra.name, priceDelta: extra.priceDelta }]);
-    }
-  };
 
   const cycleIngredient = (ingredient: string) => {
     const current = adjustments[ingredient] || 'standard';
@@ -209,40 +192,6 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
                     </div>
                   </section>
                 )}
-
-                {/* Universal Extras */}
-                <section>
-                  <h3 className="text-[10px] font-black text-white uppercase tracking-widest mb-2">Add Extras</h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    {commonExtrasGroup ? (
-                      commonExtrasGroup.modifiers.map(extra => {
-                        const isSelected = selections.some(s => s.id === extra.id);
-                        return (
-                          <button
-                            key={extra.id}
-                            onClick={() => toggleExtra(extra)}
-                            className={cn(
-                              "p-2.5 rounded-lg border transition-all text-left flex items-center justify-between",
-                              isSelected 
-                                ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" 
-                                : "bg-white/5 border-white/5 text-text-secondary hover:border-white/20"
-                            )}
-                          >
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-bold uppercase">{extra.name}</span>
-                              <span className="text-[9px] font-mono text-emerald-500/60 font-medium">+{PricingEngine.formatCurrency(extra.priceDelta)}</span>
-                            </div>
-                            {isSelected && <Check className="w-3 h-3 text-emerald-400" />}
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div className="col-span-2 p-4 border border-dashed border-white/10 rounded-xl text-center">
-                        <p className="text-[8px] text-text-muted uppercase tracking-widest font-black">No Global Extras Found</p>
-                      </div>
-                    )}
-                  </div>
-                </section>
 
                 {/* Allergy & Dietary Safeguard */}
                 <section className="bg-white/5 rounded-xl p-3.5 border border-white/5 space-y-3">

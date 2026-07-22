@@ -149,13 +149,13 @@ export const generateReceiptPDF = (
       y += 3.5;
     });
 
-    // Modifiers & Add-ons
-    if (itemsCfg.showModifiers && item.modifiers && item.modifiers.length > 0) {
-      item.modifiers.forEach((mod) => {
-        const modName = ` + ${mod.name}`.toUpperCase();
-        const modPrice = PricingEngine.formatCurrency(mod.priceDelta || 0);
-        doc.text(modName, margin + 2, y);
-        doc.text(modPrice, margin + 70, y, { align: 'right' });
+    // Add-ons
+    if (itemsCfg.showModifiers && item.addons && item.addons.length > 0) {
+      item.addons.forEach((addon) => {
+        const addonName = addon.name.replace(/\s*batch\s*/gi, '').trim().toUpperCase();
+        const addonPrice = PricingEngine.formatCurrency(addon.priceGross || 0);
+        doc.text(addonName, margin + 2, y);
+        doc.text(addonPrice, margin + 70, y, { align: 'right' });
         y += 3.5;
       });
     }

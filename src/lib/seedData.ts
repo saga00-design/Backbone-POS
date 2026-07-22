@@ -15,7 +15,9 @@ export const seedData = {
         canVoid: false,
         canDiscount: false,
         canRefund: false,
-        canManageFloor: true
+        canManageFloor: true,
+        canVoidItem: false,
+        canApplyDiscount: false
       }
     }
   ],

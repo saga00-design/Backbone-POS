@@ -2,7 +2,7 @@ export type TableStatus = 'available' | 'seated' | 'ordering' | 'fired' | 'serve
 export type POSOrderStatus = 'draft' | 'open' | 'sent' | 'partially_paid' | 'paid' | 'cancelled' | 'refunded';
 export type POSOrderItemStatus = 'draft' | 'held' | 'fired' | 'preparing' | 'ready' | 'served' | 'voided';
 export type Station = 'grill' | 'cold' | 'dessert' | 'bar' | 'pass';
-export type Course = 'drinks' | 'starters' | 'tacos' | 'mains' | 'desserts' | 'sides' | 'extras';
+export type Course = 'drinks' | 'starters' | 'tacos' | 'mains' | 'desserts' | 'sides';
 export type PaymentMethod = 'cash' | 'card' | 'code';
 
 export interface PaymentRecord {
@@ -25,6 +25,12 @@ export interface StaffProfile {
     canDiscount: boolean;
     canRefund: boolean;
     canManageFloor: boolean;
+    // Bulk multi-select actions in the order panel — distinct from (and
+    // gated separately to) the single-item canVoid/canDiscount above,
+    // since bulk actions affect many items at once and warrant a
+    // separately-grantable permission.
+    canVoidItem?: boolean;
+    canApplyDiscount?: boolean;
   };
   isClockedIn?: boolean;
   lastClockIn?: number;
@@ -38,22 +44,6 @@ export interface StockRequirement {
   cost: number; // pence
 }
 
-export interface Modifier {
-  id: string;
-  name: string;
-  priceDelta: number;
-  cost?: number; // pence
-  stockRequirements?: StockRequirement[];
-}
-
-export interface ModifierGroup {
-  id: string;
-  name: string;
-  minSelection: number;
-  maxSelection: number;
-  modifiers: Modifier[];
-}
-
 export interface MenuItemSnapshot {
   id: string;
   name: string;
@@ -64,7 +54,9 @@ export interface MenuItemSnapshot {
   categoryId: string;
   isDrink: boolean;
   isAlcoholic?: boolean;
-  modifierGroups?: ModifierGroup[];
+  isSide?: boolean;
+  isAddon?: boolean;
+  parentRecipeId?: string;
   ingredients?: string[]; // Legacy - for UI display
   allergies?: string[];
   imageUrl?: string;
@@ -113,11 +105,19 @@ export interface AllergyCustomisation {
   crossContaminationOk: boolean;
 }
 
+export interface AddonLineItem {
+  menuItemId: string;
+  name: string;
+  priceGross: number;
+  quantity: number;
+}
+
 export interface POSOrderItem {
   uuid: string;
   menuItemId: string;
   snapshot: MenuItemSnapshot;
-  modifiers: ModifierSelection[];
+  addons?: AddonLineItem[];
+  parentOrderItemUuid?: string;
   ingredientAdjustments?: Record<string, IngredientAction>;
   notes?: string;
   course?: Course;
@@ -133,6 +133,10 @@ export interface POSOrderItem {
   firedAt?: number;
   reassigned?: boolean;
   allergyCustomisations?: AllergyCustomisation[];
+  isSetMenuItem?: boolean;
+  isSetMenuCharge?: boolean;
+  setMenuId?: string;
+  setMenuName?: string;
 }
 
 export interface POSOrder {
@@ -229,12 +233,13 @@ export interface ZReport {
 
 export interface KDSTicketItem {
   uuid: string;
+  parentOrderItemUuid?: string;
   name: string;
   quantity: number;
   modifiers: ModifierSelection[];
   notes?: string;
   course?: Course;
-  status: 'held' | 'pending' | 'preparing' | 'ready' | 'served';
+  status: 'held' | 'pending' | 'preparing' | 'ready' | 'served' | 'bumped';
   startedAt?: number;
   completedAt?: number;
   priority?: boolean;
@@ -343,4 +348,25 @@ export interface UnavailableItem {
   quantityRemaining?: number;
   locationId: string;
   updatedAt: string;
+}
+
+export interface SetMenuCourseItem {
+  recipeId: string;
+  recipeName?: string;
+}
+
+export interface SetMenuCourse {
+  name?: string;
+  items: SetMenuCourseItem[];
+}
+
+export interface SetMenu {
+  id: string;
+  name: string;
+  isActive: boolean;
+  locationId: string;
+  eventDate?: number;
+  pricePerHead: number;
+  description?: string;
+  courses: SetMenuCourse[];
 }

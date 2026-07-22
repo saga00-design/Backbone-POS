@@ -41,8 +41,8 @@ export const printCustomerReceipt = async (
         const allergens = template.items.showAllergens && item.snapshot?.allergies && item.snapshot.allergies.length > 0
           ? `<div style="font-size: 9px; color: #b45309; margin-left: 10px;">ALLERGENS: ${item.snapshot.allergies.map(a => a.toUpperCase()).join(', ')}</div>`
           : '';
-        const modifiers = template.items.showModifiers && item.modifiers && item.modifiers.length > 0
-          ? `<div style="font-size: 9px; color: #555; margin-left: 10px;">${item.modifiers.map(m => `+ ${m.name}`).join(', ')}</div>`
+        const modifiers = template.items.showModifiers && item.addons && item.addons.length > 0
+          ? `<div style="font-size: 9px; color: #555; margin-left: 10px;">${item.addons.map(a => a.name.replace(/\s*batch\s*/gi, '').trim()).join(', ')}</div>`
           : '';
         return `
           <tr style="border-bottom: 1px dotted #ccc;">

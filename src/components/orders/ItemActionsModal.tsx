@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { POSOrderItem, Table, ModifierSelection, Modifier, ModifierGroup, IngredientAction, AllergyCustomisation } from '../../types/pos';
+import { POSOrderItem, Table, IngredientAction, AllergyCustomisation, MenuItemSnapshot } from '../../types/pos';
 import { usePOSStore } from '../../app/store';
 import { PricingEngine } from '../../domain/PricingEngine';
 import { X, MessageSquare, Plus, Minus, Hash, Percent, Trash2, Move, Check, ArrowRight, Gift, Wind, Info, ShieldAlert, Utensils, AlertCircle } from 'lucide-react';
@@ -12,19 +12,22 @@ interface ItemActionsModalProps {
 }
 
 export const ItemActionsModal: React.FC<ItemActionsModalProps> = ({ item, onClose }) => {
-  const { updateItemInOrder, voidItem, transferItem, tables, currentStaff, activeTable } = usePOSStore();
-  
-  const hasIngredients = item.snapshot?.ingredients && item.snapshot.ingredients.length > 0;
-  const hasModifiers = item.snapshot?.modifierGroups && item.snapshot.modifierGroups.length > 0;
+  const { updateItemInOrder, voidItem, transferItem, tables, currentStaff, activeTable, menuItems, addItem } = usePOSStore();
 
-  const [activeTab, setActiveTab] = useState<'details' | 'modifiers' | 'ingredients' | 'discount' | 'transfer' | 'void' | 'course' | 'allergies'>(
-    hasModifiers ? 'modifiers' : (hasIngredients ? 'ingredients' : 'details')
+  const hasIngredients = item.snapshot?.ingredients && item.snapshot.ingredients.length > 0;
+  const addonItems = menuItems.filter(i => i.isAddon === true);
+  const dishIngredients = item.snapshot?.ingredients || [];
+  const matchingAddons = addonItems.filter(a => a.parentRecipeId && dishIngredients.includes(a.parentRecipeId));
+  const otherAddons = addonItems.filter(a => !matchingAddons.includes(a));
+
+  const [activeTab, setActiveTab] = useState<'details' | 'ingredients' | 'addons' | 'discount' | 'transfer' | 'void' | 'course' | 'allergies'>(
+    hasIngredients ? 'ingredients' : 'details'
   );
-  
+
   // State for actions
   const [notes, setNotes] = useState(item.notes || '');
   const [quantity, setQuantity] = useState(item.quantity);
-  const [selections, setSelections] = useState<ModifierSelection[]>(item.modifiers || []);
+  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [adjustments, setAdjustments] = useState<Record<string, IngredientAction>>(item.ingredientAdjustments || {});
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>(item.discountType || 'percentage');
   const [discountValue, setDiscountValue] = useState(item.discountValue || 0);
@@ -61,16 +64,31 @@ export const ItemActionsModal: React.FC<ItemActionsModalProps> = ({ item, onClos
       baseNotes = baseNotes ? `${allergyPref}\n${baseNotes}` : allergyPref;
     }
 
-    updateItemInOrder(item.uuid, { 
-      notes: baseNotes, 
-      quantity, 
-      modifiers: selections,
+    updateItemInOrder(item.uuid, {
+      notes: baseNotes,
+      quantity,
       ingredientAdjustments: adjustments,
       discountType,
       discountValue,
       course: selectedCourse,
       allergyCustomisations: customisations
     });
+
+    for (const addonId of selectedAddons) {
+      const addon = menuItems.find(i => i.id === addonId);
+      if (!addon) continue;
+      addItem({
+        menuItemId: addon.id,
+        snapshot: addon,
+        addons: [],
+        status: 'draft',
+        quantity: 1,
+        course: undefined,
+        staffId: currentStaff?.id || '',
+        parentOrderItemUuid: item.uuid
+      });
+    }
+
     onClose();
   };
 
@@ -95,36 +113,6 @@ export const ItemActionsModal: React.FC<ItemActionsModalProps> = ({ item, onClos
     onClose();
   };
 
-  const toggleModifier = (group: ModifierGroup, modifier: Modifier) => {
-    const isSelected = selections.some(s => s.id === modifier.id);
-    
-    if (isSelected) {
-      setSelections(selections.filter(s => s.id !== modifier.id));
-    } else {
-      const groupSelections = selections.filter(s => 
-        group.modifiers.some(m => m.id === s.id)
-      );
-      
-      if (groupSelections.length < group.maxSelection) {
-        setSelections([...selections, { id: modifier.id, name: modifier.name, priceDelta: modifier.priceDelta }]);
-      } else if (group.maxSelection === 1) {
-        const otherSelections = selections.filter(s => 
-          !group.modifiers.some(m => m.id === s.id)
-        );
-        setSelections([...otherSelections, { id: modifier.id, name: modifier.name, priceDelta: modifier.priceDelta }]);
-      }
-    }
-  };
-
-  const isGroupValid = (group: ModifierGroup) => {
-    const groupSelections = selections.filter(s => 
-      group.modifiers.some(m => m.id === s.id)
-    );
-    return groupSelections.length >= group.minSelection && groupSelections.length <= group.maxSelection;
-  };
-
-  const allGroupsValid = item.snapshot?.modifierGroups?.every(isGroupValid) ?? true;
-
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-bg-dark/95 backdrop-blur-md">
       <div className="bg-bg-card border border-white/10 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row h-[88vh] md:h-[620px]">
@@ -136,14 +124,12 @@ export const ItemActionsModal: React.FC<ItemActionsModalProps> = ({ item, onClos
             <div className="h-0.5 w-6 bg-brand-primary" />
           </div>
           
-          {item.snapshot.modifierGroups && item.snapshot.modifierGroups.length > 0 && (
-            <TabButton active={activeTab === 'modifiers'} onClick={() => setActiveTab('modifiers')} icon={Hash} label="Modifiers" />
-          )}
           {hasIngredients && (
             <TabButton active={activeTab === 'ingredients'} onClick={() => setActiveTab('ingredients')} icon={Info} label="Ingredients" />
           )}
           <TabButton active={activeTab === 'course'} onClick={() => setActiveTab('course')} icon={Wind} label="Change Course" />
           <TabButton active={activeTab === 'details'} onClick={() => setActiveTab('details')} icon={MessageSquare} label="Notes & Qty" />
+          <TabButton active={activeTab === 'addons'} onClick={() => setActiveTab('addons')} icon={Plus} label="Add-Ons" color={selectedAddons.length > 0 ? "text-brand-primary font-black" : "text-text-muted"} />
           <TabButton active={activeTab === 'allergies'} onClick={() => setActiveTab('allergies')} icon={ShieldAlert} label="Allergy Safety" color={selectedAllergies.length > 0 ? "text-status-pending font-black animate-pulse" : "text-text-muted"} />
           <TabButton active={activeTab === 'discount'} onClick={() => setActiveTab('discount')} icon={Percent} label="Discounts" />
           <TabButton active={activeTab === 'transfer'} onClick={() => setActiveTab('transfer')} icon={Move} label="Transfer" />
@@ -161,7 +147,7 @@ export const ItemActionsModal: React.FC<ItemActionsModalProps> = ({ item, onClos
             <div className="pt-1.5 border-t border-white/10 flex justify-between items-center">
               <span className="text-[9px] font-black uppercase tracking-widest text-brand-primary">Total</span>
               <span className="text-xs font-black text-white">
-                {PricingEngine.formatCurrency(((item.snapshot?.priceGross || 0) + selections.reduce((a, b) => a + b.priceDelta, 0)) * quantity)}
+                {PricingEngine.formatCurrency((item.snapshot?.priceGross || 0) * quantity)}
               </span>
             </div>
           </div>
@@ -187,55 +173,6 @@ export const ItemActionsModal: React.FC<ItemActionsModalProps> = ({ item, onClos
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 md:p-6 no-scrollbar">
-            {activeTab === 'modifiers' && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-350">
-                {item.snapshot?.modifierGroups?.map(group => (
-                  <div key={group.id} className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-[9px] font-black text-white uppercase tracking-widest flex items-center gap-2">
-                        {group.name}
-                        {group.minSelection > 0 && <span className="text-[8px] text-brand-primary bg-brand-primary/10 px-2 py-0.5 rounded-full">Required</span>}
-                      </h4>
-                      <span className="text-[8px] text-text-muted font-bold uppercase tracking-tighter">
-                        Min: {group.minSelection} / Max: {group.maxSelection}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {group.modifiers.map(mod => {
-                        const isSelected = selections.some(s => s.id === mod.id);
-                        return (
-                          <button
-                            key={mod.id}
-                            onClick={() => toggleModifier(group, mod)}
-                            className={cn(
-                              "p-3 rounded-xl border transition-all text-left flex items-center justify-between",
-                              isSelected 
-                                ? "bg-brand-primary/20 border-brand-primary text-white" 
-                                : "bg-white/5 border-white/5 text-text-secondary hover:bg-white/10"
-                            )}
-                          >
-                            <div>
-                              <span className="text-xs font-bold uppercase tracking-tight">{mod.name}</span>
-                              {mod.priceDelta !== 0 && (
-                                <span className="text-[9px] font-mono font-bold text-brand-primary block mt-0.5">
-                                  {mod.priceDelta > 0 ? `+£${PricingEngine.formatCurrency(mod.priceDelta)}` : `-£${PricingEngine.formatCurrency(Math.abs(mod.priceDelta))}`}
-                                </span>
-                              )}
-                            </div>
-                            {isSelected && (
-                              <div className="w-5 h-5 bg-brand-primary rounded-full flex items-center justify-center">
-                                <Check className="w-3.5 h-3.5 text-white" />
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
             {activeTab === 'ingredients' && hasIngredients && (
               <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <div className="bg-brand-primary/5 border border-brand-primary/10 p-3 rounded-xl flex gap-3">
@@ -290,7 +227,7 @@ export const ItemActionsModal: React.FC<ItemActionsModalProps> = ({ item, onClos
                 </div>
                 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {(['drinks', 'starters', 'tacos', 'mains', 'desserts', 'sides', 'extras'] as const).map(course => (
+                  {(['drinks', 'starters', 'tacos', 'mains', 'desserts', 'sides'] as const).map(course => (
                     <button 
                       key={course}
                       onClick={() => setSelectedCourse(course)}
@@ -334,13 +271,55 @@ export const ItemActionsModal: React.FC<ItemActionsModalProps> = ({ item, onClos
 
                 <div className="space-y-2">
                   <label className="text-[9px] font-black text-text-muted uppercase tracking-wider">Kitchen & Bar Instructions</label>
-                  <textarea 
+                  <textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="E.g. No allergies, extra crispy, birthday guest..."
                     className="w-full h-28 bg-white/5 border border-white/10 rounded-xl p-4 text-white font-bold text-xs outline-none focus:border-brand-primary transition-all resize-none shadow-inner"
                   />
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'addons' && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                <div className="bg-brand-primary/5 border border-brand-primary/10 p-3 rounded-xl flex gap-3">
+                  <Plus className="w-5 h-5 text-brand-primary shrink-0" />
+                  <div>
+                    <h4 className="text-white font-bold text-xs">Add-Ons</h4>
+                    <p className="text-[9px] text-text-secondary font-black uppercase tracking-wider mt-0.5">Attach extra items to send alongside this order line.</p>
+                  </div>
+                </div>
+
+                {addonItems.length === 0 ? (
+                  <div className="p-6 border border-dashed border-white/10 rounded-xl text-center">
+                    <p className="text-[10px] text-text-muted font-black uppercase tracking-widest">No add-on items configured yet</p>
+                    <p className="text-[9px] text-text-muted/70 font-bold uppercase tracking-wider mt-1">Mark a menu item as an add-on in Menu Management to see it here</p>
+                  </div>
+                ) : matchingAddons.length > 0 ? (
+                  <>
+                    <AddonGroup
+                      label="Goes with this dish"
+                      addons={matchingAddons}
+                      selectedAddons={selectedAddons}
+                      onToggle={setSelectedAddons}
+                    />
+                    {otherAddons.length > 0 && (
+                      <AddonGroup
+                        addons={otherAddons}
+                        selectedAddons={selectedAddons}
+                        onToggle={setSelectedAddons}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <AddonGroup
+                    label="General add-ons"
+                    addons={addonItems}
+                    selectedAddons={selectedAddons}
+                    onToggle={setSelectedAddons}
+                  />
+                )}
               </div>
             )}
 
@@ -612,9 +591,8 @@ export const ItemActionsModal: React.FC<ItemActionsModalProps> = ({ item, onClos
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleUpdateItem}
-                disabled={!allGroupsValid}
                 className="flex-[2] py-3.5 bg-brand-primary disabled:opacity-20 text-white font-black uppercase tracking-widest rounded-xl shadow-lg shadow-brand-primary/20 hover:scale-[1.01] active:scale-95 transition-all text-xs"
               >
                 Apply Changes
@@ -626,6 +604,42 @@ export const ItemActionsModal: React.FC<ItemActionsModalProps> = ({ item, onClos
     </div>
   );
 };
+
+const AddonGroup = ({ label, addons, selectedAddons, onToggle }: {
+  label?: string;
+  addons: MenuItemSnapshot[];
+  selectedAddons: string[];
+  onToggle: (next: string[]) => void;
+}) => (
+  <div className="space-y-2">
+    {label && (
+      <label className="text-[9px] font-black text-text-muted uppercase tracking-wider">{label}</label>
+    )}
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {addons.map(addon => {
+        const isSelected = selectedAddons.includes(addon.id);
+        return (
+          <button
+            key={addon.id}
+            onClick={() => onToggle(isSelected
+              ? selectedAddons.filter(id => id !== addon.id)
+              : [...selectedAddons, addon.id])}
+            className={cn(
+              "p-4 rounded-xl border transition-all flex flex-col items-center justify-center gap-1.5 text-center",
+              isSelected
+                ? "bg-brand-primary text-white border-brand-primary shadow-sm"
+                : "bg-white/5 border-white/10 text-text-secondary hover:bg-white/10"
+            )}
+          >
+            <span className="text-xs font-black uppercase tracking-wider">{addon.name.replace(/\s*batch\s*/gi, '').trim()}</span>
+            <span className="text-[10px] font-mono font-bold opacity-80">{PricingEngine.formatCurrency(addon.priceGross)}</span>
+            {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
 
 const TabButton = ({ active, onClick, icon: Icon, label, color = "text-text-secondary" }: { active: boolean; onClick: () => void; icon: any; label: string; color?: string }) => (
   <button 

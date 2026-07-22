@@ -96,6 +96,8 @@ export const StaffManagement: React.FC = () => {
                 <PermissionBadge label="Discount" active={staff.permissions?.canDiscount || false} />
                 <PermissionBadge label="Refund" active={staff.permissions?.canRefund || false} />
                 <PermissionBadge label="Floor" active={staff.permissions?.canManageFloor || false} />
+                <PermissionBadge label="Bulk Void" active={staff.permissions?.canVoidItem || false} />
+                <PermissionBadge label="Bulk Discount" active={staff.permissions?.canApplyDiscount || false} />
               </div>
             </div>
           </motion.div>
@@ -150,6 +152,8 @@ const StaffModal: React.FC<StaffModalProps> = ({ staff, onClose, onSave }) => {
         canDiscount: staff?.permissions?.canDiscount ?? false,
         canRefund: staff?.permissions?.canRefund ?? false,
         canManageFloor: staff?.permissions?.canManageFloor ?? true,
+        canVoidItem: staff?.permissions?.canVoidItem ?? false,
+        canApplyDiscount: staff?.permissions?.canApplyDiscount ?? false,
       }
     }
   );
@@ -162,6 +166,8 @@ const StaffModal: React.FC<StaffModalProps> = ({ staff, onClose, onSave }) => {
       canDiscount: ['manager', 'admin', 'supervisor'].includes(role),
       canRefund: ['manager', 'admin'].includes(role),
       canManageFloor: ['waiter', 'bartender', 'supervisor', 'manager', 'admin'].includes(role),
+      canVoidItem: ['manager', 'admin', 'supervisor'].includes(role),
+      canApplyDiscount: ['manager', 'admin', 'supervisor'].includes(role),
     };
     setFormData(prev => ({ ...prev, role, permissions }));
   };
@@ -287,11 +293,23 @@ const StaffModal: React.FC<StaffModalProps> = ({ staff, onClose, onSave }) => {
                   active={formData.permissions?.canRefund || false}
                   onToggle={() => togglePermission('canRefund')}
                 />
-                <PermissionToggle 
-                  label="Floor Management" 
+                <PermissionToggle
+                  label="Floor Management"
                   description="Table seating & zones"
                   active={formData.permissions?.canManageFloor || false}
                   onToggle={() => togglePermission('canManageFloor')}
+                />
+                <PermissionToggle
+                  label="Bulk Void"
+                  description="Multi-select void in order panel"
+                  active={formData.permissions?.canVoidItem || false}
+                  onToggle={() => togglePermission('canVoidItem')}
+                />
+                <PermissionToggle
+                  label="Bulk Discount"
+                  description="Multi-select discount in order panel"
+                  active={formData.permissions?.canApplyDiscount || false}
+                  onToggle={() => togglePermission('canApplyDiscount')}
                 />
              </div>
           </div>
