@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { db, auth } from './firebase';
 import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -7,6 +7,7 @@ import { MenuItemSnapshot, Zone, Table, StaffProfile, POSOrder, KDSTicket, Unava
 import { POSTransaction } from '../types/transactions';
 import { initializeDatabase } from './seedData';
 import { parseFirestoreTimestamp } from './dateUtils';
+import { ringNewOrderBell } from './bellSound';
 
 import { POS_CONFIG } from '../app/config';
 
@@ -19,6 +20,11 @@ export const useFirestoreSync = () => {
     setUnavailableItems, setActiveSetMenus
   } = usePOSStore();
   const LOCATION_ID = POS_CONFIG.LOCATION_ID;
+  // Per-ticket-id guard for the new-order bell, tracked separately per
+  // station so each listener's own first snapshot (existing tickets on
+  // load/reconnect) doesn't ring — only genuinely new ticket ids after that.
+  const seenKitchenTicketIds = useRef<Set<string> | null>(null);
+  const seenBarTicketIds = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     let unsubs: (() => void)[] = [];
@@ -27,6 +33,8 @@ export const useFirestoreSync = () => {
       // Clear previous listeners if auth changes
       unsubs.forEach(unsub => unsub());
       unsubs = [];
+      seenKitchenTicketIds.current = null;
+      seenBarTicketIds.current = null;
 
       if (!user) return;
 
@@ -89,25 +97,43 @@ export const useFirestoreSync = () => {
         setPOSAlerts(alerts.sort((a, b) => b.createdAt - a.createdAt));
       }, (err) => console.error("POS Alerts Sync Error:", err)));
 
+      // Rings the new-order bell once per genuinely new ticket id. The
+      // ref's first population (app load/reconnect) is treated as
+      // "already known" so existing in-progress tickets never ring.
+      const ringForNewTickets = (tickets: KDSTicket[], seenRef: { current: Set<string> | null }) => {
+        const currentIds = tickets.map(t => t.id);
+        if (seenRef.current === null) {
+          seenRef.current = new Set(currentIds);
+          return;
+        }
+        const newIds = currentIds.filter(id => !seenRef.current!.has(id));
+        if (newIds.length > 0) {
+          ringNewOrderBell();
+          newIds.forEach(id => seenRef.current!.add(id));
+        }
+      };
+
       // Sync KDS Tickets (Kitchen)
       const qKds = query(
-        collection(db, 'kdsTickets'), 
+        collection(db, 'kdsTickets'),
         where('locationId', '==', LOCATION_ID),
         where('status', 'in', ['pending', 'preparing', 'ready'])
       );
       unsubs.push(onSnapshot(qKds, (snapshot) => {
         const tickets = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as KDSTicket));
+        ringForNewTickets(tickets, seenKitchenTicketIds);
         setKdsTickets(tickets.sort((a, b) => a.createdAt - b.createdAt));
       }, (err) => console.error("KDS Kitchen Sync Error:", err)));
 
       // Sync KDS Tickets (Bar)
       const qBar = query(
-        collection(db, 'barKdsTickets'), 
+        collection(db, 'barKdsTickets'),
         where('locationId', '==', LOCATION_ID),
         where('status', 'in', ['pending', 'preparing', 'ready'])
       );
       unsubs.push(onSnapshot(qBar, (snapshot) => {
         const tickets = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as KDSTicket));
+        ringForNewTickets(tickets, seenBarTicketIds);
         setBarKdsTickets(tickets.sort((a, b) => a.createdAt - b.createdAt));
       }, (err) => console.error("KDS Bar Sync Error:", err)));
 

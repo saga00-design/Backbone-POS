@@ -753,7 +753,7 @@ export const MenuManagementScreen: React.FC = () => {
             </button>
             {!showSidesAddons && !showSubfolderGrid && selectedTopLevel !== 'set_menus' && (
               <button
-                onClick={() => setEditingItem({ station: 'grill', priceGross: 0, vatRate: 20, isDrink: false, ingredients: [] })}
+                onClick={() => setEditingItem({ station: 'grill', priceGross: 0, vatRate: POS_CONFIG.DEFAULT_VAT_RATE, isDrink: false, ingredients: [] })}
                 className="flex items-center gap-2 bg-brand-primary px-6 py-2 rounded-xl text-white font-black uppercase tracking-widest text-xs shadow-lg shadow-brand-primary/20"
               >
                 <Plus className="w-4 h-4" />

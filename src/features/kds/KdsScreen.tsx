@@ -5,7 +5,7 @@ import { Clock, CheckCircle2, ChefHat, Wine, AlertCircle, Play, CheckCircle } fr
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { playNotificationSound } from '../../lib/notifications';
-import { ringKitchenBell, ringBarBell } from '../../lib/bellSound';
+import { unlockBellAudio } from '../../lib/bellSound';
 
 interface KdsScreenProps {
   station: 'kitchen' | 'bar';
@@ -16,8 +16,6 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
   const [showHistory, setShowHistory] = useState(false);
   const [now, setNow] = useState(Date.now());
   const prevTicketsCount = useRef<number>(0);
-  const prevStatuses = useRef<Record<string, string>>({});
-  const prevBumpedCounts = useRef<Record<string, number>>({});
 
   const stationTickets = station === 'bar' ? barKdsTickets : kdsTickets;
 
@@ -40,50 +38,13 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
     prevTicketsCount.current = currentTickets.length;
   }, [currentTickets.length]);
 
-  // Bell — rings whenever a course is bumped (some items newly marked
-  // 'bumped') or the whole ticket transitions to 'bumped'. Watches the
-  // unfiltered per-station list (not currentTickets) since a fully-bumped
-  // ticket is immediately excluded from currentTickets — the transition
-  // would never be observed otherwise.
-  useEffect(() => {
-    stationTickets.forEach(ticket => {
-      const prevStatus = prevStatuses.current[ticket.id];
-      const currStatus = ticket.status;
-      const prevBumpedCount = prevBumpedCounts.current[ticket.id];
-      const currBumpedCount = ticket.items.filter(i => (i.status as string) === 'bumped').length;
-
-      const ticketFullyBumped = prevStatus && prevStatus !== 'bumped' && currStatus === 'bumped';
-      const courseJustBumped = prevBumpedCount !== undefined && currBumpedCount > prevBumpedCount;
-
-      if (ticketFullyBumped || courseJustBumped) {
-        if (station === 'bar') {
-          ringBarBell();
-        } else {
-          ringKitchenBell();
-        }
-      }
-
-      prevStatuses.current[ticket.id] = currStatus;
-      prevBumpedCounts.current[ticket.id] = currBumpedCount;
-    });
-  }, [stationTickets, station]);
+  // Bell ringing moved to updateKdsTicketStatus (store.ts) — a ticket that
+  // goes fully-bumped is excluded from this station's Firestore query in
+  // the same snapshot the transition happens, so a reactive effect here
+  // could never reliably observe it.
 
   // Unlock audio on first user interaction (browser autoplay restriction)
-  useEffect(() => {
-    const unlock = () => {
-      const ctx = new (window.AudioContext ||
-                      (window as any).webkitAudioContext)();
-      ctx.resume().then(() => ctx.close());
-      document.removeEventListener('click', unlock);
-      document.removeEventListener('touchstart', unlock);
-    };
-    document.addEventListener('click', unlock);
-    document.addEventListener('touchstart', unlock);
-    return () => {
-      document.removeEventListener('click', unlock);
-      document.removeEventListener('touchstart', unlock);
-    };
-  }, []);
+  useEffect(() => unlockBellAudio(), []);
 
   // Timer refresh
   useEffect(() => {

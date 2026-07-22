@@ -228,22 +228,24 @@ export const generateReceiptPDF = (
   doc.text('-'.repeat(38), margin, y);
   y += 4;
 
-  // VAT Table Explanation
+  // VAT Table Explanation — the VAT total is read from the transaction
+  // exactly as recorded at time of sale; it is never recalculated here.
   if (totals.showVat) {
     doc.setFont('courier', 'bold');
     doc.text('VAT BREAKDOWN', margin, y);
     y += 3.5;
     doc.setFont('courier', 'normal');
-    doc.text('RATE       NET         VAT        GROSS', margin, y);
+    doc.text('NET             VAT             GROSS', margin, y);
     y += 3.5;
 
-    // Calculate rates
-    const standardVat = transaction.vatTotal;
-    const vatRate = 20; // Default VAT tax rate
-    const vatNet = transaction.subtotalGross / (1 + vatRate / 100);
-    const vatCalculated = transaction.subtotalGross - vatNet;
+    // transaction.subtotalGross is stored net-of-VAT despite its name
+    // (see store.ts, where the same value is assigned to netSales) — so
+    // the VAT-inclusive gross here is net + vatTotal, not subtotalGross itself.
+    const vatCalculated = transaction.vatTotal;
+    const vatNet = transaction.subtotalGross;
+    const vatGross = vatNet + vatCalculated;
 
-    doc.text(`${vatRate}%        ${PricingEngine.formatCurrency(vatNet)}   ${PricingEngine.formatCurrency(vatCalculated)}   ${PricingEngine.formatCurrency(transaction.subtotalGross)}`, margin, y);
+    doc.text(`${PricingEngine.formatCurrency(vatNet)}      ${PricingEngine.formatCurrency(vatCalculated)}      ${PricingEngine.formatCurrency(vatGross)}`, margin, y);
     y += 4;
     doc.text('-'.repeat(38), margin, y);
     y += 4;

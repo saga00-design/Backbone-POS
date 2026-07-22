@@ -86,6 +86,14 @@ service cloud.firestore {
     }
 
     // ===============================================================
+    // Recipes (Hub-owned domain, POS-owned rules file/database)
+    // ===============================================================
+    match /recipes/{recipeId} {
+      allow read: if isAuthenticated() && hasValidLocation(resource.data);
+      allow write: if isManager();
+    }
+
+    // ===============================================================
     // Shift Briefings & Acknowledgements
     // ===============================================================
     match /shiftBriefings/{briefingId} {

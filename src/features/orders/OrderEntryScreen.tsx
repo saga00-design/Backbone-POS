@@ -342,7 +342,7 @@ export const OrderEntryScreen: React.FC = () => {
         id: `set_menu_${menu.id}`,
         name: `★ ${menu.name}`,
         priceGross: menu.pricePerHead * covers,
-        vatRate: 20,
+        vatRate: POS_CONFIG.DEFAULT_VAT_RATE,
         station: 'pass',
         categoryId: 'cat_specials',
         isDrink: false,
@@ -1346,7 +1346,7 @@ export const OrderEntryScreen: React.FC = () => {
               {selectedUuids.length} item{selectedUuids.length > 1 ? 's' : ''} selected
             </p>
             <div className="grid grid-cols-3 gap-2">
-              {currentStaff?.permissions?.canVoidItem && (
+              {(currentStaff?.permissions?.canVoidItem ?? currentStaff?.permissions?.canVoid ?? false) && (
                 <button
                   onClick={() => setShowBulkVoid(true)}
                   className="py-2.5 bg-red-500/10 hover:bg-red-500 border border-red-500/30 hover:border-red-500 rounded-xl text-[9px] font-black uppercase tracking-widest text-red-400 hover:text-white transition-all"
@@ -1354,7 +1354,7 @@ export const OrderEntryScreen: React.FC = () => {
                   Void All
                 </button>
               )}
-              {currentStaff?.permissions?.canApplyDiscount && (
+              {(currentStaff?.permissions?.canApplyDiscount ?? currentStaff?.permissions?.canDiscount ?? false) && (
                 <button
                   onClick={() => setShowBulkDiscount(true)}
                   className="py-2.5 bg-emerald-500/10 hover:bg-emerald-500 border border-emerald-500/30 hover:border-emerald-500 rounded-xl text-[9px] font-black uppercase tracking-widest text-emerald-400 hover:text-white transition-all"

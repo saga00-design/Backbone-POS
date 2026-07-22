@@ -58,7 +58,7 @@ export const PricingEngine = {
    */
   calculateOrderVatTotal: (lineTotals: number[], vatRates: number[]): number => {
     return lineTotals.reduce((sum, gross, idx) => {
-      const rate = vatRates[idx] || 20;
+      const rate = vatRates[idx] ?? POS_CONFIG.DEFAULT_VAT_RATE;
       // VAT = Gross - (Gross / (1 + rate/100))
       return sum + Math.round(gross - (gross / (1 + rate / 100)));
     }, 0);

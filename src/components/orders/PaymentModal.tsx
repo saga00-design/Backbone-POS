@@ -5,6 +5,7 @@ import { X, CreditCard, Banknote, Ticket, Check, Calculator, Delete, CornerDownL
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { PricingEngine } from '../../domain/PricingEngine';
+import { POS_CONFIG } from '../../app/config';
 import { db } from '../../lib/firebase';
 import { useConnectionStatus } from '../../hooks/useConnectionStatus';
 import { OfflineBanner } from '../OfflineBanner';
@@ -48,7 +49,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ order, onClose, onPr
       return PricingEngine.calculateItemGross(base, modifierTotal, qty);
     });
 
-    const vatRates = safeItems.map((item: any) => item?.snapshot?.vatRate ?? item?.vatRate ?? 20);
+    const vatRates = safeItems.map((item: any) => item?.snapshot?.vatRate ?? item?.vatRate ?? POS_CONFIG.DEFAULT_VAT_RATE);
 
     const subtotalGross =
       order?.subtotalGross ??

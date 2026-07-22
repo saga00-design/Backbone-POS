@@ -7,6 +7,7 @@ import { collection, doc, setDoc, updateDoc, deleteDoc, addDoc, getDoc, writeBat
 import { sanitizeForFirestore } from '../lib/utils';
 import { POS_CONFIG } from './config';
 import { getDefaultReceiptTemplate } from '../features/settings/receiptDefaults';
+import { ringBarBell, ringKitchenBell } from '../lib/bellSound';
 
 export enum OperationType {
   CREATE = 'create',
@@ -1535,6 +1536,19 @@ export const usePOSStore = create<POSState>((set, get) => ({
         if (allItemsBumped) {
           updates.status = 'bumped';
           updates.bumpedAt = Date.now();
+        }
+
+        // Ring here, not from a reactive effect watching ticket state —
+        // a ticket that goes fully-bumped disappears from the Firestore
+        // query results (status no longer in the listener's 'in' filter)
+        // in the very same snapshot the transition happens, so nothing
+        // downstream ever observes it as a change. Firing synchronously
+        // on every bump call (partial or final), before the write, is the
+        // only place this is reliably observable for every ticket.
+        if (station === 'bar') {
+          ringBarBell();
+        } else {
+          ringKitchenBell();
         }
 
         await updateDoc(ticketRef, sanitizeForFirestore(updates));

@@ -4,7 +4,7 @@ import { KDSTicket, POSOrder, Course } from '../../types/pos';
 import { CheckCircle2, Clock, AlertCircle, ChefHat, Wine, ArrowRightCircle, CheckCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import { ringKitchenBell, ringBarBell } from '../../lib/bellSound';
+import { ringKitchenBell, ringBarBell, unlockBellAudio } from '../../lib/bellSound';
 
 export const ExpoScreen: React.FC = () => {
   const { kdsTickets, barKdsTickets, allOrders, serveOrder, fireCourse } = usePOSStore();
@@ -39,21 +39,7 @@ export const ExpoScreen: React.FC = () => {
   }, [allTickets]);
 
   // Unlock audio on first user interaction (browser autoplay restriction)
-  useEffect(() => {
-    const unlock = () => {
-      const ctx = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
-      ctx.resume().then(() => ctx.close());
-      document.removeEventListener('click', unlock);
-      document.removeEventListener('touchstart', unlock);
-    };
-    document.addEventListener('click', unlock);
-    document.addEventListener('touchstart', unlock);
-    return () => {
-      document.removeEventListener('click', unlock);
-      document.removeEventListener('touchstart', unlock);
-    };
-  }, []);
+  useEffect(() => unlockBellAudio(), []);
 
   // Sync tickets into orders. Orders stay visible until every ticket is
   // 'served' — a fully 'bumped' (but not yet served) order must remain
@@ -75,14 +61,23 @@ export const ExpoScreen: React.FC = () => {
     // courses can still be shown as DONE on the progression strip, and so
     // Table Done can be detected.
     const allOrderTickets = [...kdsTickets, ...barKdsTickets].filter(t => t.orderId === orderId);
+    const allKitchenTkts = kdsTickets.filter(t => t.orderId === orderId);
+    const allBarTkts = barKdsTickets.filter(t => t.orderId === orderId);
 
-    const kitchenReady = kitchenTkts.length > 0 && kitchenTkts.every(t => t.status === 'ready');
-    const barReady = barTkts.length > 0 && barTkts.every(t => t.status === 'ready');
-    const kitchenPending = kitchenTkts.length > 0 && !kitchenReady;
-    const barPending = barTkts.length > 0 && !barReady;
+    // The 2-stage KDS flow (pending -> preparing -> bumped) never writes
+    // 'ready' anymore, so "station done with its part" now means every
+    // ticket for that station on this order is bumped/served — checked
+    // against the unfiltered set, since bumped tickets are excluded from
+    // kitchenTkts/barTkts above.
+    const kitchenReady = allKitchenTkts.length > 0 && allKitchenTkts.every(t => t.status === 'bumped' || t.status === 'served');
+    const barReady = allBarTkts.length > 0 && allBarTkts.every(t => t.status === 'bumped' || t.status === 'served');
+    const kitchenPreparing = kitchenTkts.length > 0 && kitchenTkts.some(t => t.status === 'preparing');
+    const barPreparing = barTkts.length > 0 && barTkts.some(t => t.status === 'preparing');
+    const kitchenPending = kitchenTkts.length > 0 && !kitchenPreparing;
+    const barPending = barTkts.length > 0 && !barPreparing;
 
-    // An order is "Ready to Serve" if all its active station tickets are 'ready'
-    const isFullReady = (kitchenTkts.length === 0 || kitchenReady) && (barTkts.length === 0 || barReady);
+    // An order is "Ready to Serve" once every station that has items is done with them
+    const isFullReady = (allKitchenTkts.length === 0 || kitchenReady) && (allBarTkts.length === 0 || barReady);
 
     // Table Done — every ticket for this order (any station) has been bumped or served
     const allTicketsBumped = allOrderTickets.length > 0 &&
@@ -102,8 +97,8 @@ export const ExpoScreen: React.FC = () => {
        orderId,
        tableName: kitchenTkts[0]?.tableName || barTkts[0]?.tableName || allOrderTickets[0]?.tableName || 'Table',
        createdAt,
-       kitchenStatus: kitchenTkts.length === 0 ? 'none' : kitchenReady ? 'ready' : kitchenPending ? 'pending' : 'none',
-       barStatus: barTkts.length === 0 ? 'none' : barReady ? 'ready' : barPending ? 'pending' : 'none',
+       kitchenStatus: allKitchenTkts.length === 0 ? 'none' : kitchenReady ? 'ready' : kitchenPreparing ? 'preparing' : kitchenPending ? 'pending' : 'none',
+       barStatus: allBarTkts.length === 0 ? 'none' : barReady ? 'ready' : barPreparing ? 'preparing' : barPending ? 'pending' : 'none',
        kitchenItems: kitchenTkts.flatMap(t => t.items),
        barItems: barTkts.flatMap(t => t.items),
        isFullReady,
@@ -273,30 +268,30 @@ export const ExpoScreen: React.FC = () => {
                 <div className="grid grid-cols-2 border-b border-white/5">
                   <div className={cn(
                     "p-4 flex flex-col items-center justify-center gap-1 border-r border-white/5 transition-colors",
-                    ticket.kitchenStatus === 'ready' ? "bg-status-available/20" : ticket.kitchenStatus === 'pending' ? "bg-amber-500/10" : "bg-white/2"
+                    (ticket.kitchenStatus === 'ready' || ticket.kitchenStatus === 'preparing') ? "bg-status-available/20" : ticket.kitchenStatus === 'pending' ? "bg-amber-500/10" : "bg-white/2"
                   )}>
                     <div className="flex items-center gap-2">
-                      <ChefHat className={cn("w-4 h-4", ticket.kitchenStatus === 'ready' ? "text-status-available" : "text-text-muted")} />
-                      <span className={cn("text-[8px] font-black uppercase tracking-widest", ticket.kitchenStatus === 'ready' ? "text-status-available" : "text-text-muted")}>
+                      <ChefHat className={cn("w-4 h-4", (ticket.kitchenStatus === 'ready' || ticket.kitchenStatus === 'preparing') ? "text-status-available" : "text-text-muted")} />
+                      <span className={cn("text-[8px] font-black uppercase tracking-widest", (ticket.kitchenStatus === 'ready' || ticket.kitchenStatus === 'preparing') ? "text-status-available" : "text-text-muted")}>
                         Kitchen
                       </span>
                     </div>
-                    <span className={cn("text-xs font-black", ticket.kitchenStatus === 'ready' ? "text-status-available" : "text-text-muted")}>
-                      {ticket.kitchenStatus === 'ready' ? 'READY' : ticket.kitchenStatus === 'none' ? 'N/A' : 'PREP'}
+                    <span className={cn("text-xs font-black", (ticket.kitchenStatus === 'ready' || ticket.kitchenStatus === 'preparing') ? "text-status-available" : "text-text-muted")}>
+                      {ticket.kitchenStatus === 'ready' ? 'READY' : ticket.kitchenStatus === 'preparing' ? 'PREP' : ticket.kitchenStatus === 'pending' ? 'WAITING' : 'N/A'}
                     </span>
                   </div>
                   <div className={cn(
                     "p-4 flex flex-col items-center justify-center gap-1 transition-colors",
-                    ticket.barStatus === 'ready' ? "bg-status-available/20" : ticket.barStatus === 'pending' ? "bg-amber-500/10" : "bg-white/2"
+                    (ticket.barStatus === 'ready' || ticket.barStatus === 'preparing') ? "bg-status-available/20" : ticket.barStatus === 'pending' ? "bg-amber-500/10" : "bg-white/2"
                   )}>
                     <div className="flex items-center gap-2">
-                       <Wine className={cn("w-4 h-4", ticket.barStatus === 'ready' ? "text-status-available" : "text-text-muted")} />
-                       <span className={cn("text-[8px] font-black uppercase tracking-widest", ticket.barStatus === 'ready' ? "text-status-available" : "text-text-muted")}>
+                       <Wine className={cn("w-4 h-4", (ticket.barStatus === 'ready' || ticket.barStatus === 'preparing') ? "text-status-available" : "text-text-muted")} />
+                       <span className={cn("text-[8px] font-black uppercase tracking-widest", (ticket.barStatus === 'ready' || ticket.barStatus === 'preparing') ? "text-status-available" : "text-text-muted")}>
                          Bar
                        </span>
                     </div>
-                    <span className={cn("text-xs font-black", ticket.barStatus === 'ready' ? "text-status-available" : "text-text-muted")}>
-                      {ticket.barStatus === 'ready' ? 'READY' : ticket.barStatus === 'none' ? 'N/A' : 'PREP'}
+                    <span className={cn("text-xs font-black", (ticket.barStatus === 'ready' || ticket.barStatus === 'preparing') ? "text-status-available" : "text-text-muted")}>
+                      {ticket.barStatus === 'ready' ? 'READY' : ticket.barStatus === 'preparing' ? 'PREP' : ticket.barStatus === 'pending' ? 'WAITING' : 'N/A'}
                     </span>
                   </div>
                 </div>
