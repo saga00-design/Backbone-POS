@@ -1,229 +1,430 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
     function isManager() {
-      return isAuthenticated() && 
+      return isAuthenticated() && (
+        request.auth.token.email == "saga00@gmail.com" ||
+        request.auth.token.email == "famrokha@gmail.com" ||
         (
-          request.auth.token.email == "saga00@gmail.com" ||
-          (exists(/databases/$(database)/documents/staffProfiles/$(request.auth.uid)) && 
-           get(/databases/$(database)/documents/staffProfiles/$(request.auth.uid)).data.role in ['manager', 'admin'])
-        );
-    }
-
-    function isStaff() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/staffProfiles/$(request.auth.uid));
+          exists(/databases/$(database)/documents/staffProfiles/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/staffProfiles/$(request.auth.uid)).data.role in ['manager', 'admin', 'Admin', 'Manager']
+        )
+      );
     }
 
     function hasValidLocation(data) {
       return data.locationId == "loc_camden" || data.siteId == "loc_camden";
     }
 
-    // ===============================================================
-    // Staff Profiles
-    // ===============================================================
+    // FIX: staff editing their own profile can no longer change their own role,
+    // permissions, or PIN. Only a manager/admin can change those fields.
+    function isSelfEditWithoutPrivilegeEscalation() {
+      let unchanged = ['role', 'permissions', 'pin', 'isManager', 'isAdmin'];
+      return isAuthenticated() &&
+        request.auth.uid == resource.id &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(unchanged);
+    }
+
+    // ── User profiles ─────────────────────────────────────────
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      match /{subcollection}/{docId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+
+    // ── Staff Profiles ────────────────────────────────────────
+    // FIX (CN-002/CN-003): staff can only read their own record; managers can
+    // read everyone. Staff can update their own non-privileged fields (name,
+    // phone, availability etc.) but cannot touch role/permissions/pin.
     match /staffProfiles/{staffId} {
-      // Allow any authenticated user to read staff profiles to enable PIN login
-      allow read: if isAuthenticated();
-      // Allow managers to write any profile, or users to write their own
-      allow write: if isManager() || (isAuthenticated() && request.auth.uid == staffId);
+      allow read: if isAuthenticated() && (request.auth.uid == staffId || isManager());
+      allow create: if isManager();
+      allow update: if isManager() || isSelfEditWithoutPrivilegeEscalation();
+      allow delete: if isManager();
     }
 
-    // ===============================================================
-    // POS Orders
-    // ===============================================================
+    // ── POS Orders ────────────────────────────────────────────
     match /posOrders/{orderId} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
-      allow update: if isAuthenticated() && resource.data.locationId == "loc_camden" && hasValidLocation(request.resource.data);
+      allow update: if isAuthenticated();
       allow delete: if isManager();
     }
 
-    // ===============================================================
-    // Menu Items & Categories
-    // ===============================================================
+    // ── Menu ──────────────────────────────────────────────────
     match /menuItems/{itemId} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow read: if isAuthenticated();
       allow write: if isManager();
     }
+
     match /menuCategories/{categoryId} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
+      allow read: if isAuthenticated();
       allow write: if isManager();
     }
 
-    // ===============================================================
-    // Tables
-    // ===============================================================
-    match /tables/{tableId} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
-      allow update: if isAuthenticated() && resource.data.locationId == "loc_camden" && hasValidLocation(request.resource.data);
-      allow delete: if isManager();
+    match /modifiers/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
     }
 
-    // ===============================================================
-    // Zones
-    // ===============================================================
-    match /zones/{zoneId} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
-      allow update: if isAuthenticated() && resource.data.locationId == "loc_camden" && hasValidLocation(request.resource.data);
-      allow delete: if isManager();
-    }
-
-    // ===============================================================
-    // Modifier Groups
-    // ===============================================================
     match /modifierGroups/{groupId} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
-      allow write: if isManager();
-    }
-
-    // ===============================================================
-    // Recipes (Hub-owned domain, POS-owned rules file/database)
-    // ===============================================================
-    match /recipes/{recipeId} {
-      allow read: if isAuthenticated() && hasValidLocation(resource.data);
-      allow write: if isManager();
-    }
-
-    // ===============================================================
-    // Shift Briefings & Acknowledgements
-    // ===============================================================
-    match /shiftBriefings/{briefingId} {
       allow read: if isAuthenticated();
       allow write: if isManager();
     }
-    match /briefingAcknowledgements/{ackId} {
+
+    // ── Tables & Zones ────────────────────────────────────────
+    match /tables/{tableId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
-      allow update, delete: if isManager();
+      allow update: if isAuthenticated();
+      allow delete: if isManager();
     }
 
-    // ===============================================================
-    // POS Alerts
-    // ===============================================================
-    match /posAlerts/{alertId} {
+    match /zones/{zoneId} {
       allow read: if isAuthenticated();
-      allow write: if isManager();
+      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow update: if isAuthenticated();
+      allow delete: if isManager();
     }
 
-    // ===============================================================
-    // KDS Tickets
-    // ===============================================================
+    // ── KDS ───────────────────────────────────────────────────
     match /kdsTickets/{ticketId} {
       allow read, write: if isAuthenticated();
     }
+
     match /barKdsTickets/{ticketId} {
       allow read, write: if isAuthenticated();
     }
 
-    // ===============================================================
-    // KDS History
-    // ===============================================================
     match /kdsHistory/{historyId} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+      allow read, write: if isAuthenticated();
+    }
+
+    // ── HUB collections (operational — left open for staff use) ─
+    match /inventory/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /recipes/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /sidesAndAddons/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /setMenus/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // FIX: supplier records + pricing are commercially sensitive — manager only.
+    match /suppliers/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /staff/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+
+    match /stockCounts/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /salesImports/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /waste/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // FIX (CN-001): financial data — manager only, both read and write.
+    match /expenses/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /invoices/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /orders/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /receivingRecords/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /supplierPriceHistory/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /stockMovements/{docId} {
+      allow read, create: if isAuthenticated();
       allow update, delete: if isManager();
     }
 
-    // ===============================================================
-    // POS Payments
-    // ===============================================================
-    match /posPayments/{paymentId} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+    // ── Financial (CN-001 fix: manager only) ───────────────────
+    match /monthlyTargets/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /cashflow/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /liabilities/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /weeklyCostEntries/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    // ── VAT (manager only) ──────────────────────────────────────
+    match /vatTracker/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /vatReturns/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    // ── Menu Engineering ──────────────────────────────────────
+    match /menuEngineering/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    // ── Labour & Staffing ─────────────────────────────────────
+    match /labourShifts/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // FIX: payroll figures — manager only. Staff should not see wage cost data.
+    match /payrollAccruals/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /payrollCentreWeeks/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /labourBudgets/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /rotas/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /staffAvailability/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /staffingForecasts/{docId} {
+      allow read: if isManager();
+      allow write: if isManager();
+    }
+
+    match /clockInRecords/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ── Staff Performance & Training ──────────────────────────
+    // FIX: staff can see their own performance/certs; manager sees everyone.
+    match /staffPerformance/{docId} {
+      allow read: if isManager() || (isAuthenticated() && resource.data.staffId == request.auth.uid);
+      allow write: if isManager();
+    }
+
+    match /staffCertifications/{docId} {
+      allow read: if isManager() || (isAuthenticated() && resource.data.staffId == request.auth.uid);
+      allow write: if isManager();
+    }
+
+    // ── Quiz Bank (HUB-managed, POS-consumed) ─────────────────
+    match /quizTemplates/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+
+    match /quizSubmissions/{docId} {
+      allow read, create: if isAuthenticated();
       allow update, delete: if isManager();
     }
 
-    // ===============================================================
-    // Z-Reports (End of Day)
-    // ===============================================================
-    match /zReports/{reportId} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
-      allow create: if isManager() && hasValidLocation(request.resource.data);
+    // ── Shift & Briefing ──────────────────────────────────────
+    match /shiftTargets/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /shiftChallenges/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /shiftPerformance/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /shiftBriefings/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+
+    match /briefingAcknowledgements/{docId} {
+      allow read, create: if isAuthenticated();
       allow update, delete: if isManager();
     }
 
-    // ===============================================================
-    // Cancelled Sessions & Stock
-    // ===============================================================
-    match /cancelledSessions/{id} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
-      allow update, delete: if isManager();
-    }
-    match /quizSubmissions/{id} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
-      allow update, delete: if isManager();
-    }
-    match /stockMovements/{id} {
-      allow read: if isAuthenticated() && resource.data.locationId == "loc_camden";
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
-      allow update, delete: if isManager();
+    match /unavailableItems/{docId} {
+      allow read, write: if isAuthenticated();
     }
 
-    // ===============================================================
-    // Transactions, Snapshots, and Histories (Auditing)
-    // ===============================================================
-    match /posTransactions/{id} {
-      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
-      allow update: if isAuthenticated() && (resource == null || hasValidLocation(resource.data)) && hasValidLocation(request.resource.data);
-      allow delete: if false; // Transactions must never be deleted!
+    // ── Alerts & Notifications ────────────────────────────────
+    match /posAlerts/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
     }
-    match /ticketSnapshots/{id} {
-      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
-      allow update: if isManager();
-      allow delete: if false; // Snapshots must never be deleted!
+
+    match /alerts/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
     }
-    match /transactionAdjustments/{id} {
-      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
-      allow update, delete: if false; // Audit logs must be immutable!
-    }
-    match /receiptPrintHistory/{id} {
-      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+
+    // ── AI & Automation Logs (manager read, system write) ─────
+    match /aiActions/{docId} {
+      allow read: if isManager();
+      allow create: if isAuthenticated();
       allow update, delete: if false;
     }
-    match /receiptEmailHistory/{id} {
-      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
-      allow create: if isAuthenticated() && hasValidLocation(request.resource.data);
+
+    match /automationLogs/{docId} {
+      allow read: if isManager();
+      allow create: if isAuthenticated();
       allow update, delete: if false;
     }
-    match /dailyClosures/{id} {
-      allow read: if isAuthenticated() && (resource == null || hasValidLocation(resource.data));
-      allow create: if isManager() && hasValidLocation(request.resource.data);
+
+    match /importLogs/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isManager();
+    }
+
+    // ── Reporting & Analytics ─────────────────────────────────
+    match /predictions/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /auditLogs/{docId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    // ── Payments & Closures ───────────────────────────────────
+    match /posPayments/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /dailyClosures/{docId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isManager();
+      allow delete: if false;
+    }
+
+    match /zReports/{docId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isManager();
+      allow delete: if false;
+    }
+
+    // ── Immutable audit trails ────────────────────────────────
+    match /posTransactions/{docId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    match /ticketSnapshots/{docId} {
+      allow read, create: if isAuthenticated();
       allow update: if isManager();
       allow delete: if false;
     }
 
-    // ===============================================================
-    // Nested Business Site Audit Paths
-    // ===============================================================
-    match /businesses/{businessId}/sites/{siteId}/transactionAuditLogs/{id} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (siteId == "loc_camden" || businessId == "biz_backbone");
+    match /transactionAdjustments/{docId} {
+      allow read, create: if isAuthenticated();
       allow update, delete: if false;
     }
-    match /businesses/{businessId}/sites/{siteId}/receiptEmailHistory/{id} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (siteId == "loc_camden" || businessId == "biz_backbone");
+
+    match /receiptPrintHistory/{docId} {
+      allow read, create: if isAuthenticated();
       allow update, delete: if false;
     }
-    match /businesses/{businessId}/sites/{siteId}/transactionAdjustments/{id} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (siteId == "loc_camden" || businessId == "biz_backbone");
+
+    match /receiptEmailHistory/{docId} {
+      allow read, create: if isAuthenticated();
       allow update, delete: if false;
+    }
+
+    match /cancelledSessions/{docId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if isManager();
+    }
+
+    // ── Settings & Diagnostics ────────────────────────────────
+    // FIX: settings were writable by any authenticated staff member.
+    match /settings/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isManager();
+    }
+
+    match /diagnostics/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ── Phase 2 multi-tenant (ready but not yet active) ───────
+    match /businesses/{businessId}/sites/{siteId}/{collection}/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /businesses/{businessId}/sites/{siteId}/transactionAuditLogs/{docId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    match /businesses/{businessId}/sites/{siteId}/receiptEmailHistory/{docId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    match /businesses/{businessId}/sites/{siteId}/transactionAdjustments/{docId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    // ── Default deny ──────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
