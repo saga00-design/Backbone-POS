@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { usePOSStore } from '../../app/store';
 import { StaffProfile } from '../../types/pos';
-import { db, auth, googleProvider } from '../../lib/firebase';
+import { db, auth, googleProvider, verifyStaffPin } from '../../lib/firebase';
 import { collection, addDoc, setDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithPopup, User } from 'firebase/auth';
 import { Delete, ShieldAlert, Wifi, WifiOff, LogIn, UserCheck, Copy, ChevronRight } from 'lucide-react';
@@ -17,6 +17,7 @@ export const PinLoginScreen: React.FC = () => {
   const { setStaff, staffList, syncFromHub, clockIn } = usePOSStore();
   const [isSyncing, setIsSyncing] = useState(false);
   const [isClockingIn, setIsClockingIn] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   const handleSync = async () => {
     if (!googleUser) {
@@ -59,14 +60,36 @@ export const PinLoginScreen: React.FC = () => {
     }
   };
 
+  // PINs used to be compared directly against staffList[].pin in the
+  // browser - that field no longer exists on staffProfiles documents at
+  // all (moved to the manager-only staffSecrets collection in Firestore,
+  // shared with Backbone Hub). Verification now goes through the
+  // verifyStaffPin Cloud Function, which uses the Admin SDK server-side
+  // and never sends the actual PIN value back to the client. It also
+  // rate-limits repeated failed attempts per signed-in session.
   const handlePress = (num: string) => {
     setError(false);
-    if (pin.length < 4) {
+    if (pin.length < 4 && !isVerifying) {
       const newPin = pin + num;
       setPin(newPin);
-      
+
       if (newPin.length === 4) {
-        const staff = staffList.find(s => s.pin === newPin);
+        verifyPin(newPin);
+      }
+    }
+  };
+
+  const verifyPin = async (enteredPin: string) => {
+    setIsVerifying(true);
+    try {
+      const result = await verifyStaffPin({
+        pin: enteredPin,
+        locationId: POS_CONFIG.LOCATION_ID,
+      });
+      const data = result.data as { verified: boolean; staffId?: string; staffName?: string };
+
+      if (data.verified && data.staffId) {
+        const staff = staffList.find(s => s.id === data.staffId);
         if (staff) {
           if (staff.isClockedIn) {
             setStaff(staff);
@@ -74,12 +97,21 @@ export const PinLoginScreen: React.FC = () => {
             setAuthenticatedStaff(staff);
           }
         } else {
-          setTimeout(() => {
-            setPin('');
-            setError(true);
-          }, 200);
+          // Verified server-side but not (yet) in this terminal's locally
+          // synced staffList - treat as a mismatch rather than crash.
+          setPin('');
+          setError(true);
         }
+      } else {
+        setPin('');
+        setError(true);
       }
+    } catch (err) {
+      console.error('PIN verification failed:', err);
+      setPin('');
+      setError(true);
+    } finally {
+      setIsVerifying(false);
     }
   };
 

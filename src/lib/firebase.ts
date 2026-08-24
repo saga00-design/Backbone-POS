@@ -1,7 +1,8 @@
-import { initializeApp } from 'firebase/app';
+﻿import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -22,6 +23,13 @@ enableIndexedDbPersistence(db).catch((err) => {
 });
 
 export const storage = getStorage(app);
+
+// Server-side PIN verification - see functions/index.js in the Backbone-Hub
+// repo (both apps share the same Firebase project/functions). The PIN value
+// itself never lives in the browser; this returns only a yes/no plus which
+// staff member matched.
+export const functions = getFunctions(app, 'us-central1');
+export const verifyStaffPin = httpsCallable(functions, 'verifyStaffPin');
 export const googleProvider = new GoogleAuthProvider();
 
 // Test connection to Firestore
