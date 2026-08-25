@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { 
   Save, RotateCcw, Printer, Copy, Download, Upload, 
   HelpCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, 
@@ -86,7 +86,9 @@ export const ReceiptTemplateEditor: React.FC = () => {
   }, [template]);
 
   // Guard: Only manager/admin/architect can access (we checked currentStaff inside parent SettingsScreen, but let's have an extra safety layer)
-  const canEdit = currentStaff?.role === 'admin' || currentStaff?.role === 'manager';
+  // Hub saves roles capitalized; normalize before comparing (same fix as
+  // SettingsScreen.tsx and App.tsx's nav filtering).
+  const canEdit = ['admin', 'manager'].includes(currentStaff?.role?.toLowerCase() || '');
 
   // Toggle editor accordions
   const toggleSection = (section: string) => {

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { usePOSStore } from '../../app/store';
 import { 
   Settings, Users, LayoutGrid, ClipboardList, Database, 
@@ -15,7 +15,10 @@ export const SettingsScreen: React.FC = () => {
   const [activeTab, setActiveTab] = React.useState<'staff' | 'floor' | 'system' | 'receipt'>('staff');
   const [isSyncing, setIsSyncing] = React.useState(false);
 
-  if (!currentStaff || currentStaff.role !== 'admin') {
+  // Hub saves roles capitalized (Admin/Manager/etc); normalize before
+  // comparing against POS's lowercase convention - same root cause already
+  // fixed in App.tsx's nav filtering and Settings.tsx's permission mapping.
+  if (!currentStaff || currentStaff.role?.toLowerCase() !== 'admin') {
      return (
         <div className="h-full flex items-center justify-center p-8 bg-bg-dark">
            <div className="text-center space-y-6 max-w-md">
