@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { usePOSStore, POSState } from './app/store';
 import { PinLoginScreen } from './features/auth/PinLoginScreen';
 import { FloorPlanScreen } from './features/floor/FloorPlanScreen';
@@ -79,7 +79,13 @@ export default function App() {
     { id: 'settings', label: 'Setup', icon: <Settings />, roles: ['admin', 'manager'] },
   ];
 
-  const filteredNav = navItems.filter(item => item.roles.includes(currentStaff.role));
+  // Hub saves roles capitalized (Admin/Manager/Waiter/Chef/Bartender, matching
+  // its own DEFAULT_PERMISSIONS keys); this file's own bootstrap flow and
+  // seed data save them lowercase. Normalize here so staff created through
+  // either app see the correct nav regardless of which one created them -
+  // this was a real bug: any Hub-created "Admin" never matched the lowercase
+  // 'admin' in these role arrays, silently emptying their entire sidebar.
+  const filteredNav = navItems.filter(item => item.roles.includes(currentStaff.role?.toLowerCase()));
 
   return (
     <div className="h-screen bg-bg-dark flex flex-col md:flex-row overflow-hidden">
