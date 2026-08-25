@@ -7,7 +7,7 @@ import { onAuthStateChanged, signInWithPopup, User } from 'firebase/auth';
 import { Delete, ShieldAlert, Wifi, WifiOff, LogIn, UserCheck, Copy, ChevronRight } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn, sanitizeForFirestore } from '../../lib/utils';
-import { POS_CONFIG } from '../../app/config';
+import { POS_CONFIG, ADMIN_EMAILS } from '../../app/config';
 
 export const PinLoginScreen: React.FC = () => {
   const [pin, setPin] = useState('');
@@ -135,8 +135,8 @@ export const PinLoginScreen: React.FC = () => {
       alert('Please Login with Google first to verify your Manager identity.');
       return;
     }
-    if (googleUser.email !== 'saga00@gmail.com') {
-      alert(`Access Denied: Only saga00@gmail.com can bootstrap the system. You are logged in as ${googleUser.email}`);
+    if (!googleUser.email || !(ADMIN_EMAILS as readonly string[]).includes(googleUser.email)) {
+      alert(`Access Denied: Only an authorized admin account can bootstrap the system. You are logged in as ${googleUser.email}`);
       return;
     }
     try {
@@ -153,7 +153,7 @@ export const PinLoginScreen: React.FC = () => {
       alert('Admin user created (PIN: 1234). You can now log in using the keypad.');
     } catch (err) {
       console.error('Error bootstrapping user:', err);
-      alert('Bootstrap failed. Ensure you are logged in as saga00@gmail.com.');
+      alert('Bootstrap failed. Ensure you are logged in as an authorized admin account.');
     }
   };
 
