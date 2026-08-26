@@ -18,6 +18,17 @@ export const PinLoginScreen: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isClockingIn, setIsClockingIn] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  // Drives the loading animation on the logo/status line for the initial
+  // connect moment - staffList starts empty purely because the Firestore
+  // listener hasn't returned data yet, not because there are genuinely no
+  // staff, so a short fixed window covers that realistic first-load gap
+  // without needing to hook deeper into the store's internal fetch state.
+  const [isInitializing, setIsInitializing] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => setIsInitializing(false), 1500);
+    return () => clearTimeout(timer);
+  }, []);
+  const isLoadingSystems = isInitializing || isSyncing;
 
   const handleSync = async () => {
     if (!googleUser) {
@@ -197,13 +208,23 @@ export const PinLoginScreen: React.FC = () => {
 
       {/* Logo + title + staff count */}
       <div className="mb-8 text-center">
-        <div className="w-20 h-20 bg-white/5 rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-2xl shadow-white/5 overflow-hidden p-3 border border-white/10">
+        <div className={cn(
+          "w-20 h-20 bg-white/5 rounded-3xl mx-auto mb-6 flex items-center justify-center shadow-2xl shadow-white/5 overflow-hidden p-3 border border-white/10",
+          isLoadingSystems && "pos-logo-scanning"
+        )}>
           <img src="/Backbone-POS-icon.png" alt="Backbone" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
         </div>
         <h1 className="text-2xl font-black tracking-tight text-white mb-2">Backbone POS</h1>
         <p className="text-text-secondary font-medium uppercase tracking-widest text-[10px]">Enter Staff PIN to Start</p>
-        <div className="mt-2 text-[8px] text-text-muted uppercase font-bold tracking-widest">
-          {staffList.length} Staff Loaded • {googleUser ? 'Authenticated' : 'Not Authenticated'}
+        <div className="mt-2 flex items-center justify-center gap-2 text-[8px] text-text-muted uppercase font-bold tracking-widest">
+          {isLoadingSystems ? (
+            <>
+              <span className="pos-scan-dot" />
+              <span>{isSyncing ? 'Syncing systems...' : 'Initializing systems...'}</span>
+            </>
+          ) : (
+            <span>{staffList.length} Staff Loaded • {googleUser ? 'Authenticated' : 'Not Authenticated'}</span>
+          )}
         </div>
       </div>
 
