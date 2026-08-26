@@ -4,9 +4,9 @@ import { StaffProfile } from '../../types/pos';
 import { db, auth, googleProvider, verifyStaffPin } from '../../lib/firebase';
 import { collection, addDoc, setDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithPopup, User } from 'firebase/auth';
-import { Delete, ShieldAlert, Wifi, WifiOff, LogIn, UserCheck, Copy, ChevronRight } from 'lucide-react';
+import { Delete, Wifi, WifiOff, LogIn, UserCheck, Copy, ChevronRight } from 'lucide-react';
 import { motion } from 'motion/react';
-import { cn, sanitizeForFirestore } from '../../lib/utils';
+import { cn } from '../../lib/utils';
 import { POS_CONFIG, ADMIN_EMAILS } from '../../app/config';
 
 export const PinLoginScreen: React.FC = () => {
@@ -130,33 +130,6 @@ export const PinLoginScreen: React.FC = () => {
     }
   };
 
-  const bootstrapFirstUser = async () => {
-    if (!googleUser) {
-      alert('Please Login with Google first to verify your Manager identity.');
-      return;
-    }
-    if (!googleUser.email || !(ADMIN_EMAILS as readonly string[]).includes(googleUser.email)) {
-      alert(`Access Denied: Only an authorized admin account can bootstrap the system. You are logged in as ${googleUser.email}`);
-      return;
-    }
-    try {
-      // Use setDoc with the googleUser.uid to ensure isManager() rule works
-      await setDoc(doc(db, 'staffProfiles', googleUser.uid), sanitizeForFirestore({
-        id: googleUser.uid,
-        name: googleUser.displayName || 'Admin',
-        email: googleUser.email,
-        pin: '1234',
-        role: 'manager',
-        locationId: POS_CONFIG.LOCATION_ID,
-        permissions: { canVoid: true, canDiscount: true, canRefund: true, canManageFloor: true, canVoidItem: true, canApplyDiscount: true }
-      }));
-      alert('Admin user created (PIN: 1234). You can now log in using the keypad.');
-    } catch (err) {
-      console.error('Error bootstrapping user:', err);
-      alert('Bootstrap failed. Ensure you are logged in as an authorized admin account.');
-    }
-  };
-
   const handleDelete = () => {
     setPin(pin.slice(0, -1));
   };
@@ -266,15 +239,6 @@ export const PinLoginScreen: React.FC = () => {
         {/* Bootstrap / Sync buttons */}
         {(staffList.length === 0 || googleUser) && (
           <div className="mt-8 flex flex-col gap-4 w-full">
-            {staffList.length === 0 && (
-              <button 
-                onClick={bootstrapFirstUser}
-                className="w-full flex items-center justify-center gap-2 text-text-muted hover:text-white text-[10px] uppercase font-black tracking-widest"
-              >
-                <ShieldAlert className="w-3 h-3" />
-                Bootstrap First User
-              </button>
-            )}
             <button 
               onClick={handleSync}
               disabled={isSyncing}
