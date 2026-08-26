@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { usePOSStore } from '../../app/store';
 import { StaffProfile } from '../../types/pos';
 import { 
@@ -37,13 +37,6 @@ export const StaffManagement: React.FC = () => {
             className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-brand-primary"
           />
         </div>
-        <button 
-          onClick={() => setShowAddModal(true)}
-          className="bg-brand-primary hover:bg-brand-primary-light text-white px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 transition-all shadow-lg shadow-brand-primary/20"
-        >
-          <UserPlus className="w-4 h-4" />
-          Add Employee
-        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
