@@ -6,6 +6,7 @@ import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { playNotificationSound } from '../../lib/notifications';
 import { unlockBellAudio } from '../../lib/bellSound';
+import { courseRank } from '../../lib/kdsCourseBump';
 
 interface KdsScreenProps {
   station: 'kitchen' | 'bar';
@@ -145,8 +146,12 @@ export const KdsScreen: React.FC<KdsScreenProps> = ({ station }) => {
               // so completion reads from the item, not ticket.status.
               const hasActiveItems = ticket.items.some(i => i.status === 'pending' || i.status === 'preparing');
               const hasHeldItems = ticket.items.some(i => (i.status as string) === 'held');
-              const activeCourse = ticket.items
+              // Earliest active course by culinary order — must match what
+              // the store's bump actually closes (applyCourseBump), not
+              // just the first active item in array order.
+              const activeCourse = [...ticket.items]
                 .filter(i => i.status === 'pending' || i.status === 'preparing')
+                .sort((a, b) => courseRank(a.course) - courseRank(b.course))
                 .map(i => i.course)[0];
               const bumpLabel = station === 'bar'
                 ? 'READY ✓'

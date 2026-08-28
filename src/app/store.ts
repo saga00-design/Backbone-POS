@@ -8,6 +8,7 @@ import { sanitizeForFirestore } from '../lib/utils';
 import { POS_CONFIG } from './config';
 import { getDefaultReceiptTemplate } from '../features/settings/receiptDefaults';
 import { ringBarBell, ringKitchenBell } from '../lib/bellSound';
+import { applyCourseBump } from '../lib/kdsCourseBump';
 
 export enum OperationType {
   CREATE = 'create',
@@ -1514,10 +1515,14 @@ export const usePOSStore = create<POSState>((set, get) => ({
     try {
       const ticketRef = doc(db, collectionName, ticketId);
 
-      // Bumping is a per-course action: only the currently active
-      // (pending/preparing) items get marked 'bumped'. The ticket itself
-      // only flips to 'bumped' — and only then gets a kdsHistory entry —
-      // once every item on it, across every course, has been bumped.
+      // Bumping is a per-course action: a single press closes only the
+      // earliest course that still has active (pending/preparing) items —
+      // NOT every active item on the ticket. Bumping all of them silently
+      // finished courses the kitchen never cooked whenever a later course
+      // had been fired early (e.g. mains sent while starters still cook).
+      // The ticket itself only flips to 'bumped' — and only then gets a
+      // kdsHistory entry — once every item on it, across every course, has
+      // been bumped. See src/lib/kdsCourseBump.ts.
       if (status === 'bumped') {
         // Read the authoritative ticket doc — do not rely on the local
         // store snapshot, which may be stale.
@@ -1525,12 +1530,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
         if (!ticketSnap.exists()) return;
         const ticketData = ticketSnap.data() as KDSTicket;
 
-        const newItems = ticketData.items.map(i =>
-          i.status === 'pending' || i.status === 'preparing'
-            ? { ...i, status: 'bumped' as const }
-            : i
-        );
-        const allItemsBumped = newItems.every(i => i.status === 'bumped');
+        const { items: newItems, allItemsBumped } = applyCourseBump(ticketData.items);
 
         const updates: any = { items: newItems };
         if (allItemsBumped) {
