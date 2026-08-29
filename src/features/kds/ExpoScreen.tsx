@@ -1,44 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePOSStore } from '../../app/store';
 import { KDSTicket, POSOrder, Course } from '../../types/pos';
 import { CheckCircle2, Clock, AlertCircle, ChefHat, Wine, ArrowRightCircle, CheckCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import { ringKitchenBell, ringBarBell, unlockBellAudio } from '../../lib/bellSound';
+import { unlockBellAudio } from '../../lib/bellSound';
 
 export const ExpoScreen: React.FC = () => {
   const { kdsTickets, barKdsTickets, allOrders, serveOrder, fireCourse } = usePOSStore();
   const [now, setNow] = useState(Date.now());
-  const prevStatuses = useRef<Record<string, string>>({});
-  const prevAllDone = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Bell — rings once per ticket when it transitions to 'bumped'. Watches
-  // every ticket regardless of status (not the below activeOrderIds-scoped
-  // list), so the transition is observed at the moment it happens.
-  const allTickets = [...kdsTickets, ...barKdsTickets];
-  useEffect(() => {
-    allTickets.forEach(ticket => {
-      const prev = prevStatuses.current[ticket.id];
-      const curr = ticket.status;
-
-      if (prev && prev !== 'bumped' && curr === 'bumped') {
-        if (ticket.station === 'bar') {
-          ringBarBell();
-        } else {
-          ringKitchenBell();
-        }
-      }
-
-      prevStatuses.current[ticket.id] = curr;
-    });
-  }, [allTickets]);
-
-  // Unlock audio on first user interaction (browser autoplay restriction)
+  // Expo rings no bell of its own: a bumped ticket drops out of the
+  // store's `status in [pending,preparing,ready]` listener before any
+  // status-transition watcher here could observe it, and Expo always
+  // runs alongside a station that already rings from
+  // updateKdsTicketStatus (store.ts). Audio is still unlocked here so
+  // that shared bell works if the first tap lands on this screen.
   useEffect(() => unlockBellAudio(), []);
 
   // Sync tickets into orders. Orders stay visible until every ticket is
@@ -114,17 +96,6 @@ export const ExpoScreen: React.FC = () => {
        currentCourse: order?.currentCourse
     };
   }).sort((a, b) => a.createdAt - b.createdAt);
-
-  // Ring kitchen bell once per order when it fully transitions to Table Done
-  useEffect(() => {
-    expoTickets.forEach(t => {
-      const prev = prevAllDone.current[t.orderId] || false;
-      if (t.allTicketsBumped && !prev) {
-        ringKitchenBell();
-      }
-      prevAllDone.current[t.orderId] = t.allTicketsBumped;
-    });
-  }, [expoTickets]);
 
   const formatTime = (ms: number) => {
     const mins = Math.floor(ms / 60000);
