@@ -108,7 +108,7 @@ export const PricingEngine = {
     
     // 5. VAT (calculated on the net price)
     const vatTotal = activeItems.reduce((acc, i) => {
-      const rate = i.snapshot.vatRate || POS_CONFIG.DEFAULT_VAT_RATE;
+      const rate = i.snapshot.vatRate ?? POS_CONFIG.DEFAULT_VAT_RATE;
       const itemGross = i.snapshot.priceGross * i.quantity;
       const itemDiscount = i.discountAmount || 0;
       // Pro-rate order discount across items for accurate VAT?

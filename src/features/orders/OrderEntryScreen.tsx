@@ -155,9 +155,6 @@ export const OrderEntryScreen: React.FC = () => {
   const topLevelCategories = categories
     .filter(c => !c.parentId && !(c as any).hidden && c.id !== 'cat_specials')
     .sort((a, b) => ((a as any).order ?? 0) - ((b as any).order ?? 0));
-  // TEMP DEBUG — remove after diagnosing Fix 2 (Sides showing 0 items)
-  console.log('[DEBUG] all categories:\n' + categories.map(c => `${c.id} | name="${c.name}" | parentId=${(c as any).parentId || 'none'}`).join('\n'));
-
   const getSubfolders = (parentId: string) =>
     categories
       .filter(c => c.parentId === parentId)
@@ -172,17 +169,6 @@ export const OrderEntryScreen: React.FC = () => {
   const getItemCount = (categoryId: string): number => {
     const ids = collectIds(categoryId);
     const count = menuItems.filter(item => ids.includes(item.categoryId)).length;
-    const cat = categories.find(c => c.id === categoryId);
-    if (cat && /sides?/i.test(cat.name)) {
-      // TEMP DEBUG — remove after diagnosing Fix 2 (Sides showing 0 items)
-      console.log(`[DEBUG SIDES] category "${cat.name}" (id=${categoryId}) collectIds:`, ids.join(', '));
-      console.log('[DEBUG SIDES] total menuItems:', menuItems.length);
-      const sideFlagged = menuItems.filter(i => i.isSide);
-      console.log(
-        `[DEBUG SIDES] first 5 isSide===true items (of ${sideFlagged.length} total):\n` +
-        sideFlagged.slice(0, 5).map(i => `${i.name} | categoryId=${i.categoryId} | priceGross=${i.priceGross}`).join('\n')
-      );
-    }
     return count;
   };
 

@@ -1106,7 +1106,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
           priceGross: Number(i.snapshot?.priceGross) || 0,
           totalPrice: Number(i.totalPrice) || 0,
           discountAmount: Number(i.discountAmount) || 0,
-          vatRate: Number(i.snapshot?.vatRate) || 0,
+          vatRate: Number(i.snapshot?.vatRate ?? POS_CONFIG.DEFAULT_VAT_RATE),
           notes: i.notes || '',
           status: i.status
         }))

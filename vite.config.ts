@@ -12,6 +12,14 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'prompt',
+        // Serve the manifest + SW in `npm run dev` too. Without this, dev
+        // serves no manifest at all, so an already-installed copy of the app
+        // keeps showing its stale cached icon and you can't verify icon
+        // changes without a full prod build.
+        devOptions: {
+          enabled: true,
+          type: 'module',
+        },
         manifest: {
           name: 'Backbone POS',
           short_name: 'Backbone POS',
@@ -79,6 +87,15 @@ export default defineConfig(({mode}) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    // Pre-bundle these at startup. They're pulled in statically (via
+    // pdfGenerator/receiptPrinter) but deep enough in the module graph that
+    // Vite only discovers them mid-load, triggers a dep re-optimization,
+    // serves 503s for the in-flight chunks, and leaves a blank screen until
+    // a manual reload. Listing them here bundles everything before the first
+    // request.
+    optimizeDeps: {
+      include: ['jspdf', 'jspdf-autotable'],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
