@@ -116,7 +116,13 @@ export interface POSState {
   clockOut: (staffId: string) => Promise<void>;
   isOnline: boolean;
   setIsOnline: (online: boolean) => void;
-  
+  // Gates the Firestore reconnect "kick" in useConnectivity.ts — never
+  // disable/re-enable the network while a payment is being taken or verified.
+  isPaymentModalOpen: boolean;
+  setIsPaymentModalOpen: (open: boolean) => void;
+  isPaymentProcessing: boolean;
+  setIsPaymentProcessing: (processing: boolean) => void;
+
   // Historical Data for Reporting
   allOrders: POSOrder[];
   setAllOrders: (orders: POSOrder[]) => void;
@@ -379,7 +385,11 @@ export const usePOSStore = create<POSState>((set, get) => ({
   },
   isOnline: typeof window !== 'undefined' ? window.navigator.onLine : true,
   setIsOnline: (isOnline) => set({ isOnline }),
-  
+  isPaymentModalOpen: false,
+  setIsPaymentModalOpen: (isPaymentModalOpen) => set({ isPaymentModalOpen }),
+  isPaymentProcessing: false,
+  setIsPaymentProcessing: (isPaymentProcessing) => set({ isPaymentProcessing }),
+
   allOrders: [],
   setAllOrders: (allOrders) => set({ allOrders }),
   kdsHistory: [],
