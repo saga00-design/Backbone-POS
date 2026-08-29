@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { doc, getDocFromServer } from 'firebase/firestore';
 import { POSOrder, PaymentMethod } from '../../types/pos';
 import { X, CreditCard, Banknote, Ticket, Check, Calculator, Delete, CornerDownLeft, AlertTriangle } from 'lucide-react';
@@ -7,6 +7,7 @@ import { cn } from '../../lib/utils';
 import { PricingEngine } from '../../domain/PricingEngine';
 import { POS_CONFIG } from '../../app/config';
 import { db } from '../../lib/firebase';
+import { usePOSStore } from '../../app/store';
 import { useConnectionStatus } from '../../hooks/useConnectionStatus';
 import { OfflineBanner } from '../OfflineBanner';
 
@@ -96,6 +97,21 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ order, onClose, onPr
   const [paymentWarning, setPaymentWarning] = useState<string | null>(null);
 
   const { isOnline } = useConnectionStatus();
+
+  const setIsPaymentModalOpen = usePOSStore(state => state.setIsPaymentModalOpen);
+  const setIsPaymentProcessing = usePOSStore(state => state.setIsPaymentProcessing);
+
+  // Tells useConnectivity.ts's Firestore reconnect kick to stay off the whole
+  // time this modal is up, not just during the isProcessing window below —
+  // see the "don't rely on timing margins" discussion that led to this gate.
+  useEffect(() => {
+    setIsPaymentModalOpen(true);
+    return () => setIsPaymentModalOpen(false);
+  }, [setIsPaymentModalOpen]);
+
+  useEffect(() => {
+    setIsPaymentProcessing(isProcessing);
+  }, [isProcessing, setIsPaymentProcessing]);
 
   // Math Calculator Popup State & Helpers
   const [showCalculator, setShowCalculator] = useState(false);
